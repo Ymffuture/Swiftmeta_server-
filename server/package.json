@@ -1,7 +1,7 @@
 {
   "name": "swiftmeta-server",
   "version": "1.0.0",
-  "main": "app.js",
+  "main": "server.js",
   "type": "module",
   "dependencies": {
     "express": "^4.18.2",
