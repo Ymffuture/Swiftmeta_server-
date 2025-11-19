@@ -12,7 +12,7 @@ app.use(cors({
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,  // if you send cookies / tokens
   })
-););
+);
 app.use(express.json());
 
 app.use("/api/gemini", geminiRouter);
