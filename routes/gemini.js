@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
 const router = Router();
 
@@ -8,7 +8,7 @@ You are the official swiftAI in short swift for SwiftMeta.
 
 Your responsibilities:
 - Answer user questions clearly and professionally.
-- Provide accurate information related to technology, coding, web development, Ai, website build ideas, and SwiftMeta services.
+- Provide accurate information related to technology, coding, web development, AI, website build ideas, and SwiftMeta services.
 - Keep responses short, useful, and easy to understand.
 - Maintain a friendly, respectful tone at all times.
 `;
@@ -21,13 +21,23 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    // Initialize AI client
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
     const finalPrompt = `${systemPrompt}\nUser: ${prompt}`;
 
-    const result = await model.generateContent(finalPrompt);
-    const reply = result?.response?.text?.();
+    // Generate content using Gemini 2.5 Flash
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: finalPrompt }],
+        },
+      ],
+    });
+
+    const reply = response?.text;
 
     if (!reply) {
       return res.status(500).json({ error: "AI returned empty response" });
