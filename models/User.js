@@ -1,23 +1,10 @@
-import mongoose from "mongoose";
-
-const commentSchema = new mongoose.Schema({
-  author: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-  text: String,
-  createdAt: { type: Date, default: Date.now },
-  parentId: { type: mongoose.Schema.Types.ObjectId, ref: "Comment", default: null } // for Facebook-style threaded replies
-});
+const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-  phone: { type: String, required: true, unique: true }, // canonical phone string
-  email: { type: String, required: true, unique: true },
-  username: { type: String }, // editable; default = phone
-  avatarUrl: { type: String },
-  createdAt: { type: Date, default: Date.now },
-  // otp fields (short-lived)
-  otp: {
-    code: String,
-    expiresAt: Date
-  }
+  phone: { type: String, unique: true, required: true },
+  email: { type: String, required: true },
+  username: { type: String, default: function() { return this.phone; } },
+  password: { type: String, required: true },
 });
 
-export default mongoose.model("User", userSchema);
+module.exports = mongoose.model('User', userSchema);
