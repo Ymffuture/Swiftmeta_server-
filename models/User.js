@@ -1,10 +1,18 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-const userSchema = new mongoose.Schema({
-  phone: { type: String, unique: true, required: true },
-  email: { type: String, required: true },
-  username: { type: String, default: function() { return this.phone; } },
-  password: { type: String, required: true },
+const UserSchema = new mongoose.Schema({
+  phone: { type: String, required: true, unique: true }, // login id
+  email: { type: String, required: true, unique: true },
+  name: { type: String }, // display name (can rename)
+  emailOtp: {
+    code: String,
+    expiresAt: Date
+  },
+  phoneOtp: {
+    code: String,
+    expiresAt: Date
+  },
+  createdAt: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model("User", UserSchema);
