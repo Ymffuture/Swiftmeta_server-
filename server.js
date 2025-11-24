@@ -2,7 +2,11 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import geminiRouter from "./routes/gemini.js";
+const authRoutes = require('./routes/auth');
+const postRoutes = require('./routes/posts');
 
+app.use('/api/auth', authRoutes);
+app.use('/api/posts', postRoutes);
 dotenv.config();
 
 const app = express();
