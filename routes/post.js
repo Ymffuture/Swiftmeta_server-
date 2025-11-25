@@ -1,9 +1,8 @@
-const express = require("express");
+import express from "express";
 const router = express.Router();
-const auth = require("../middleware/auth");
-const Post = require("../models/Post");
-const Comment = require("../models/Comment");
-
+import auth from "../middleware/auth";
+import Post from "../models/Post";
+import Comment from "../models/Comment";
 // create post
 router.post("/", auth, async (req, res) => {
   const { title, body, images = [] } = req.body;
