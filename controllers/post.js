@@ -1,11 +1,11 @@
-const Post = require('../models/Post');
-const cloudinary = require('cloudinary').v2;
-const multer = require('multer');
+import Post from '../models/Post';
+import { v2 as cloudinary } from 'cloudinary';
+import multer from 'multer';
 const upload = multer({ dest: 'uploads/' });
 
 cloudinary.config({ cloud_name: 'yourcloud', api_key: 'yourkey', api_secret: 'yoursecret' });
 
-exports.createPost = [upload.single('image'), async (req, res) => {
+export const createPost = [upload.single('image'), async (req, res) => {
   const { content } = req.body;
   let imageUrl = '';
   if (req.file) {
@@ -17,12 +17,12 @@ exports.createPost = [upload.single('image'), async (req, res) => {
   res.status(201).json(post);
 }];
 
-exports.getPosts = async (req, res) => {
+export const getPosts = async (req, res) => {
   const posts = await Post.find().populate('user', 'username').populate('comments.user', 'username');
   res.json(posts);
 };
 
-exports.editPost = async (req, res) => {
+export const editPost = async (req, res) => {
   const { id } = req.params;
   const { content } = req.body;
   const post = await Post.findById(id);
@@ -32,7 +32,7 @@ exports.editPost = async (req, res) => {
   res.json(post);
 };
 
-exports.deletePost = async (req, res) => {
+export const deletePost = async (req, res) => {
   const { id } = req.params;
   const post = await Post.findById(id);
   if (post.user.toString() !== req.userId) return res.status(403).json({ message: 'Unauthorized' });
@@ -40,7 +40,7 @@ exports.deletePost = async (req, res) => {
   res.json({ message: 'Post deleted' });
 };
 
-exports.likePost = async (req, res) => {
+export const likePost = async (req, res) => {
   const { id } = req.params;
   const post = await Post.findById(id);
   if (!post.likes.includes(req.userId)) {
@@ -50,7 +50,7 @@ exports.likePost = async (req, res) => {
   res.json(post);
 };
 
-exports.commentPost = async (req, res) => {
+export const commentPost = async (req, res) => {
   const { id } = req.params;
   const { text } = req.body;
   const post = await Post.findById(id);
