@@ -1,14 +1,14 @@
-const User = require('../models/User');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
+import User from '../models/User';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import nodemailer from 'nodemailer';
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: { user: 'yourgmail@gmail.com', pass: 'yourapppassword' },
 });
 
-exports.register = async (req, res) => {
+export const register = async (req, res) => {
   const { phone, email, password } = req.body;
   const hashed = await bcrypt.hash(password, 10);
   const user = new User({ phone, email, password: hashed });
@@ -16,7 +16,7 @@ exports.register = async (req, res) => {
   res.status(201).json({ message: 'User registered' });
 };
 
-exports.login = async (req, res) => {
+export const login = async (req, res) => {
   const { phone } = req.body;
   const user = await User.findOne({ phone });
   if (!user) return res.status(404).json({ message: 'User not found' });
@@ -35,7 +35,7 @@ exports.login = async (req, res) => {
   res.json({ message: 'OTP sent' });
 };
 
-exports.verifyOtp = async (req, res) => {
+export const verifyOtp = async (req, res) => {
   const { phone, otp } = req.body;
   const user = await User.findOne({ phone });
   if (user.tempOtp === otp) {
@@ -46,7 +46,7 @@ exports.verifyOtp = async (req, res) => {
   }
 };
 
-exports.updateUsername = async (req, res) => {
+export const updateUsername = async (req, res) => {
   const { username } = req.body;
   const user = await User.findById(req.userId);
   user.username = username;
