@@ -85,4 +85,4 @@ router.delete("/comments/:commentId", auth, async (req, res) => {
   res.json({ message: "Deleted" });
 });
 
-module.exports = router;
+exports default router;
