@@ -1,8 +1,8 @@
 import express from "express";
 const router = express.Router();
-import User from "../models/User";
+
+import User from "../models/User.js";
 import jwt from "jsonwebtoken";
-import crypto from "crypto";
 import nodemailer from "nodemailer";
 
 // helper to make 6-digit code
@@ -25,10 +25,14 @@ const transporter = nodemailer.createTransport({
 router.post("/register", async (req, res) => {
   try {
     const { phone, email, name } = req.body;
-    if (!phone || !email) return res.status(400).json({ message: "Phone and email required" });
+    if (!phone || !email) {
+      return res.status(400).json({ message: "Phone and email required" });
+    }
 
     let user = await User.findOne({ $or: [{ phone }, { email }] });
-    if (user) return res.status(400).json({ message: "Phone or email already registered" });
+    if (user) {
+      return res.status(400).json({ message: "Phone or email already registered" });
+    }
 
     const code = makeCode();
     const expiresAt = new Date(Date.now() + 1000 * 60 * 15); // 15 min
@@ -37,15 +41,15 @@ router.post("/register", async (req, res) => {
     await user.save();
 
     // send email OTP
-    const info = await transporter.sendMail({
+    await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
       subject: "SwiftMeta — email verification code",
       text: `Your verification code is: ${code}`
     });
 
-    // NOTE: in dev we return the code in the response so you can test quickly.
-    return res.json({ message: "Registered, email OTP sent", devPreviewOtp: code });
+    return res.json({ message: "Registered, OTP sent", devPreviewOtp: code });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
@@ -55,26 +59,34 @@ router.post("/register", async (req, res) => {
 // verify email OTP
 router.post("/verify-email", async (req, res) => {
   const { email, code } = req.body;
-  if (!email || !code) return res.status(400).json({ message: "email + code required" });
+  if (!email || !code) {
+    return res.status(400).json({ message: "Email and code required" });
+  }
+
   const user = await User.findOne({ email });
-  if (!user) return res.status(400).json({ message: "User not found" });
+  if (!user) {
+    return res.status(400).json({ message: "User not found" });
+  }
+
   if (!user.emailOtp || user.emailOtp.code !== code || user.emailOtp.expiresAt < new Date()) {
     return res.status(400).json({ message: "Invalid or expired code" });
   }
-  // clear otp
+
   user.emailOtp = undefined;
   await user.save();
+
   return res.json({ message: "Email verified" });
 });
 
-// request phone login OTP (SMS placeholder)
+// request phone login OTP
 router.post("/request-phone-otp", async (req, res) => {
   const { phone } = req.body;
-  if (!phone) return res.status(400).json({ message: "Phone required" });
+  if (!phone) {
+    return res.status(400).json({ message: "Phone required" });
+  }
 
   let user = await User.findOne({ phone });
   if (!user) {
-    // create user with phone only (email required field though — set placeholder)
     user = new User({ phone, email: `${phone}@phone.local` });
     await user.save();
   }
@@ -83,47 +95,60 @@ router.post("/request-phone-otp", async (req, res) => {
   user.phoneOtp = { code, expiresAt: new Date(Date.now() + 1000 * 60 * 10) }; // 10 min
   await user.save();
 
-  // TODO: integrate SMS sending (Twilio, etc). For dev we return code.
-  // Example Twilio integration would go here.
-  return res.json({ message: "OTP sent (dev returns code)", devPreviewOtp: code });
+  return res.json({ message: "OTP sent", devPreviewOtp: code });
 });
 
-// verify phone OTP -> returns JWT
+// verify PHONE OTP → returns JWT
 router.post("/verify-phone", async (req, res) => {
   const { phone, code } = req.body;
-  if (!phone || !code) return res.status(400).json({ message: "Phone + code required" });
+  if (!phone || !code) {
+    return res.status(400).json({ message: "Phone and code required" });
+  }
+
   const user = await User.findOne({ phone });
-  if (!user || !user.phoneOtp || user.phoneOtp.code !== code || user.phoneOtp.expiresAt < new Date())
-    return res.status(400).json({ message: "Invalid or expired code" });
+  if (!user || !user.phoneOtp || user.phoneOtp.code !== code || user.phoneOtp.expiresAt < new Date()) {
+    return res.status(400).json({ message: "Invalid or expired OTP" });
+  }
 
-  // login success -> create JWT
-  const token = jwt.sign({ sub: user._id, phone: user.phone }, process.env.JWT_SECRET, { expiresIn: "30d" });
+  const token = jwt.sign(
+    { sub: user._id, phone: user.phone },
+    process.env.JWT_SECRET,
+    { expiresIn: "30d" }
+  );
 
-  // clear phone otp
   user.phoneOtp = undefined;
   await user.save();
 
   return res.json({ token });
 });
 
-// update profile (rename)
+// update profile rename
 router.put("/profile", async (req, res) => {
   try {
     const auth = req.headers.authorization;
-    if (!auth) return res.status(401).json({ message: "Unauthorized" });
+    if (!auth) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const token = auth.split(" ")[1];
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(payload.sub);
-    if (!user) return res.status(401).json({ message: "Invalid token" });
+
+    if (!user) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
 
     const { name } = req.body;
     user.name = name || user.name;
     await user.save();
+
     res.json({ user });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-exports default router;
+// ✅ Correct ES6 export
+export default router;
