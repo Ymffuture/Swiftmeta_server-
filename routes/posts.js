@@ -1,8 +1,8 @@
 import express from "express";
 const router = express.Router();
-import auth from "../middleware/auth";
-import Post from "../models/Post";
-import Comment from "../models/Comment";
+import auth from "../middleware/auth.js";
+import Post from "../models/Post.js";
+import Comment from "../models/Comment.js";
 // create post
 router.post("/", auth, async (req, res) => {
   const { title, body, images = [] } = req.body;
