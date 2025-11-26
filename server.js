@@ -5,9 +5,9 @@ import mongoose from "mongoose";
 import cors from "cors";
 import path from "path";
 
-import authRoutes from "./routes/auth";
-import postRoutes from "./routes/posts";
-import uploadRoutes from "./routes/uploads";
+import authRoutes from "./routes/auth.js";
+import postRoutes from "./routes/posts.js";
+import uploadRoutes from "./routes/uploads.js";
 import geminiRouter from "./routes/gemini.js";
 
 const app = express();
