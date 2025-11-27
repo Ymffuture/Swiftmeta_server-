@@ -2,15 +2,16 @@ import mongoose from "mongoose";
 
 const schema = new mongoose.Schema(
   {
-    phone: { type: String, unique: true, sparse: true },
-    email: { type: String, unique: true, sparse: true },
-    name: { type: String },
-    avatar: { type: String },
+    phone: { type: String, unique: true, required: true },  // ✅ enforce phone exists
+    email: { type: String, unique: true, required: true },  // ✅ enforce email exists
+    name: { type: String, default: function () { return this.phone } }, // ✅ fallback
+    avatar: { type: String, default: "" }, // ✅ always defined so React doesn't break
+    verified: { type: Boolean, default: false }, // ✅ OTP can now mark verification
+    
     emailOtp: {
       code: String,
       expiresAt: Date,
     },
-    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   },
   { timestamps: true }
 );
