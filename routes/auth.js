@@ -7,12 +7,12 @@ import auth from "../middleware/auth.js";
 
 const router = express.Router();
 
-// 6 digit code
+// Generate 6 digit OTP
 function makeCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// hash OTP
+// Hash OTP
 const hash = (txt) => crypto.createHash("sha256").update(txt).digest("hex");
 
 const transporter = nodemailer.createTransport({
@@ -22,10 +22,10 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
-// Register
+// Register user and send OTP (OPTIONAL)
 router.post("/register", async (req, res) => {
   try {
-    const { phone, email, name } = req.body;
+    const { phone, email, name, avatar } = req.body;
     if (!phone || !email)
       return res.status(400).json({ message: "Phone + email required" });
 
@@ -40,25 +40,28 @@ router.post("/register", async (req, res) => {
       phone,
       email,
       name: name || phone,
+      avatar: avatar || "",
       emailOtp: { code: hash(code), expiresAt },
+      emailVerified: false,
     });
     await user.save();
 
+    // Send OTP but DON'T block login
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
-      subject: "Verification Code",
-      text: `Your OTP is: ${code}`,
+      subject: "Verification Code (Optional)",
+      text: `Your OTP is: ${code}\nYou can still log in without verifying.`,
     });
 
-    res.json({ message: "Registered, OTP sent", devPreviewOtp: code });
+    res.json({ message: "Registered, OTP sent (Optional)", devPreviewOtp: code });
   } catch (e) {
     console.error(e);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// Verify Email OTP
+// Optional email verification (won't block login)
 router.post("/verify-email", async (req, res) => {
   const { email, code } = req.body;
   const user = await User.findOne({ email });
@@ -71,27 +74,54 @@ router.post("/verify-email", async (req, res) => {
     return res.status(400).json({ message: "Expired OTP" });
 
   user.emailOtp = undefined;
+  user.emailVerified = true;
+  user.emailOtp = null;
+  user.emailVerified = true;
   await user.save();
-  res.json({ message: "Verified" });
+  res.json({ message: "Email verified! But login was never blocked." });
 });
 
-// Login with phone only
+// LOGIN WITH PHONE (NO OTP CHECK)
 router.post("/login-phone", async (req, res) => {
   const { phone } = req.body;
   const user = await User.findOne({ phone });
-  if (!user) return res.status(404).json({ message: "No user" });
+  if (!user) return res.status(404).json({ message: "No user found" });
 
   const token = jwt.sign({ sub: user._id, phone }, process.env.JWT_SECRET, {
     expiresIn: "30d",
   });
+
   res.json({ token, user });
 });
 
-// Rename display name
+// LOGIN WITH EMAIL + OTP CHECK (OPTIONAL login method)
+router.post("/login-email", async (req, res) => {
+  const { email, code } = req.body;
+  const user = await User.findOne({ email });
+  if (!user) return res.status(404).json({ message: "No user found" });
+
+  if (!user.emailOtp || user.emailOtp.code !== hash(code))
+    return res.status(400).json({ message: "Invalid OTP" });
+
+  if (user.emailOtp.expiresAt < new Date())
+    return res.status(400).json({ message: "OTP expired" });
+
+  user.emailOtp = undefined;
+  user.emailVerified = true;
+  await user.save();
+
+  const token = jwt.sign({ sub: user._id, email }, process.env.JWT_SECRET, {
+    expiresIn: "30d",
+  });
+
+  res.json({ token, user });
+});
+
+// Update profile
 router.put("/profile", auth, async (req, res) => {
   const { name, avatar } = req.body;
   req.user.name = name || req.user.phone;
-  req.user.avatar = avatar;
+  req.user.avatar = avatar || req.user.avatar;
   await req.user.save();
   res.json({ user: req.user });
 });
