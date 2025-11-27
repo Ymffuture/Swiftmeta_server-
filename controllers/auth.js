@@ -17,9 +17,9 @@ const __dirname = path.dirname(__filename);
 
 // Cloudinary production config (replace with env vars)
 cloudinary.config({
-  cloud_name: process.env.CLD_NAME,
-  api_key: process.env.CLD_KEY,
-  api_secret: process.env.CLD_SECRET,
+  cloud_name: process.env.CLOUDINARY_API_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
 // Multer for local temp before Cloudinary
