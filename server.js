@@ -33,10 +33,10 @@ const logger = winston.createLogger({
 });
 
 // ✅ CORS properly configured (Blocks wildcard if credentials are used)
-const allowedOrigin = process.env.FRONTEND_URL || false;
+const allowedOrigin = process.env.FRONTEND_URL || "https://swiftmeta.vercel.app" ;
 
 app.use(cors({
-  origin: allowedOrigin ? [allowedOrigin] : false,
+  origin: allowedOrigin,
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
