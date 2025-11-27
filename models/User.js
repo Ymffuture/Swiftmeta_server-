@@ -1,18 +1,18 @@
 import mongoose from "mongoose";
 
-const UserSchema = new mongoose.Schema({
-  phone: { type: String, required: true, unique: true }, // login id
-  email: { type: String, required: true, unique: true },
-  name: { type: String }, // display name (can rename)
-  emailOtp: {
-    code: String,
-    expiresAt: Date
+const schema = new mongoose.Schema(
+  {
+    phone: { type: String, unique: true, sparse: true },
+    email: { type: String, unique: true, sparse: true },
+    name: { type: String },
+    avatar: { type: String },
+    emailOtp: {
+      code: String,
+      expiresAt: Date,
+    },
+    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   },
-  phoneOtp: {
-    code: String,
-    expiresAt: Date
-  },
-  createdAt: { type: Date, default: Date.now }
-});
+  { timestamps: true }
+);
 
-export default mongoose.model("User", UserSchema);
+export default mongoose.model("User", schema);
