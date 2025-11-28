@@ -23,15 +23,30 @@ const transporter = nodemailer.createTransport({
 });
 
 // Register user and send OTP (OPTIONAL)
-router.post("/register", async (req, res) => {
+import cloud from "../config/cloudinary.js";
+import multer from "multer";
+
+const upload = multer({ storage: multer.memoryStorage() });
+
+router.post("/register", upload.single("avatar"), async (req, res) => {
   try {
-    const { phone, email, name, avatar } = req.body;
+    const { phone, email, name } = req.body;
     if (!phone || !email)
       return res.status(400).json({ message: "Phone + email required" });
 
     const exists = await User.findOne({ $or: [{ phone }, { email }] });
     if (exists)
       return res.status(400).json({ message: "User already exists" });
+
+    // Upload avatar if file exists
+    let imageUrl = "";
+    if (req.file) {
+      const up = await cloud.uploader.upload(
+        `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`,
+        { folder: "users", resource_type: "image" }
+      );
+      imageUrl = up.secure_url;
+    }
 
     const code = makeCode();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
@@ -40,26 +55,34 @@ router.post("/register", async (req, res) => {
       phone,
       email,
       name: name || phone,
-      avatar: avatar || "",
+      avatar: imageUrl,
       emailOtp: { code: hash(code), expiresAt },
       emailVerified: false,
     });
+
     await user.save();
 
-    // Send OTP but DON'T block login
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    // Send OTP email and validate delivery
+    const mail = await transporter.sendMail({
+      from: `"No Reply" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: "Verification Code (Optional)",
-      text: `Your OTP is: ${code}\nYou can still log in without verifying.`,
+      subject: "Email Verification Code",
+      text: `Your verification code is: ${code}\nThe code expires in 15 minutes.`,
     });
 
-    res.json({ message: "Registered, OTP sent (Optional)", devPreviewOtp: code });
+    if (!mail.messageId) {
+      return res.status(500).json({ message: "Email not delivered" });
+    }
+
+    console.log("✅ Verification email sent:", mail.messageId);
+
+    res.json({ message: "Registration successful, verification email sent" });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Registration Error:", e);
+    res.status(500).json({ message: "Server error, email not sent" });
   }
 });
+
 
 // Optional email verification (won't block login)
 router.post("/verify-email", async (req, res) => {
