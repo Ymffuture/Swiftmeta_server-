@@ -1,28 +1,27 @@
 import express from "express";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
+import cloud from "../config/cloudinary.js";
 
 const router = express.Router();
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
-const dest = path.join(__dirname, "..", "uploads");
-if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+// Use memory storage to upload directly to Cloudinary
+const upload = multer({ storage: multer.memoryStorage() });
 
-const storage = multer.diskStorage({
-  destination: dest,
-  filename: (_, file, cb) => {
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${path.extname(file.originalname)}`);
-  },
-});
+router.post("/image", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file provided" });
 
-const upload = multer({ storage });
+    // Upload to Cloudinary
+    const result = await cloud.uploader.upload(
+      `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`,
+      { folder: "uploads", resource_type: "image" }
+    );
 
-router.post("/image", upload.single("image"), (req, res) => {
-  if (!req.file) return res.status(400).json({ message: "No file" });
-  res.json({ url: `/uploads/${req.file.filename}` });
+    res.json({ url: result.secure_url });
+  } catch (err) {
+    console.error("Cloudinary upload error:", err);
+    res.status(500).json({ message: "Failed to upload image" });
+  }
 });
 
 export default router;
