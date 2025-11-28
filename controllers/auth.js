@@ -33,14 +33,15 @@ const hashOtp = (code) =>
   crypto.createHash("sha256").update(code).digest("hex");
 
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+  service: "gmail",
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: "famacloud.ai@gmail.com",
+    pass: process.env.EMAIL_PASS, // Must be a Gmail APP PASSWORD
   },
+  logger: true,
+  debug: true,
 });
+
 
 export const register = [
   upload.single("avatar"),
