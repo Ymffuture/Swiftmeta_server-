@@ -2,10 +2,15 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import multer from "multer";
+
 import User from "../models/User.js";
 import auth from "../middleware/auth.js";
+import cloud from "../config/cloudinary.js";
 
 const router = express.Router();
+
+// ------------------- HELPERS -------------------
 
 // Generate 6 digit OTP
 function makeCode() {
@@ -15,18 +20,24 @@ function makeCode() {
 // Hash OTP
 const hash = (txt) => crypto.createHash("sha256").update(txt).digest("hex");
 
+// ------------------- EMAIL -------------------
+
+// Gmail transporter
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT || 587),
-  secure: false,
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+  service: "gmail",
+  auth: {
+    user: "quorvexinstitute@gmail.com", // your Gmail
+    pass: process.env.EMAIL_PASS,       // Gmail App Password
+  },
+  logger: true,
+  debug: true,
 });
 
-// Register user and send OTP (OPTIONAL)
-import cloud from "../config/cloudinary.js";
-import multer from "multer";
+// ------------------- MULTER -------------------
 
 const upload = multer({ storage: multer.memoryStorage() });
+
+// ------------------- REGISTER -------------------
 
 router.post("/register", upload.single("avatar"), async (req, res) => {
   try {
@@ -38,16 +49,17 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
     if (exists)
       return res.status(400).json({ message: "User already exists" });
 
-    // Upload avatar if file exists
+    // Upload avatar to Cloudinary if file exists
     let imageUrl = "";
     if (req.file) {
-      const up = await cloud.uploader.upload(
+      const uploadResult = await cloud.uploader.upload(
         `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`,
         { folder: "users", resource_type: "image" }
       );
-      imageUrl = up.secure_url;
+      imageUrl = uploadResult.secure_url;
     }
 
+    // OTP setup
     const code = makeCode();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
@@ -62,53 +74,62 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
 
     await user.save();
 
-    // Send OTP email and validate delivery
-    const mail = await transporter.sendMail({
-      from: `"No Reply" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "Email Verification Code",
-      text: `Your verification code is: ${code}\nThe code expires in 15 minutes.`,
-    });
-
-    if (!mail.messageId) {
-      return res.status(500).json({ message: "Email not delivered" });
+    // Send Gmail OTP
+    let mail;
+    try {
+      mail = await transporter.sendMail({
+        from: `"No Reply" <quorvexinstitute@gmail.com>`,
+        to: email,
+        subject: "Email Verification Code",
+        text: `Your verification code is: ${code}\nThe code expires in 15 minutes.`,
+      });
+    } catch (mailError) {
+      console.error("📧 Gmail Error:", mailError);
+      return res
+        .status(500)
+        .json({ message: "Verification email failed to send via Gmail" });
     }
 
-    console.log("✅ Verification email sent:", mail.messageId);
-
+    console.log("✅ Gmail verification OTP sent:", mail.messageId);
     res.json({ message: "Registration successful, verification email sent" });
   } catch (e) {
     console.error("❌ Registration Error:", e);
-    res.status(500).json({ message: "Server error, email not sent" });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
+// ------------------- EMAIL VERIFICATION -------------------
 
-// Optional email verification (won't block login)
 router.post("/verify-email", async (req, res) => {
-  const { email, code } = req.body;
-  const user = await User.findOne({ email });
-  if (!user) return res.status(404).json({ message: "Not found" });
+  try {
+    const { email, code } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-  if (!user.emailOtp || user.emailOtp.code !== hash(code))
-    return res.status(400).json({ message: "Invalid OTP" });
+    if (!user.emailOtp || user.emailOtp.code !== hash(code))
+      return res.status(400).json({ message: "Invalid OTP" });
 
-  if (user.emailOtp.expiresAt < new Date())
-    return res.status(400).json({ message: "Expired OTP" });
+    if (user.emailOtp.expiresAt < new Date())
+      return res.status(400).json({ message: "OTP expired" });
 
-  user.emailOtp = undefined;
-  user.emailVerified = true;
-  user.emailOtp = null;
-  user.emailVerified = true;
-  await user.save();
-  res.json({ message: "Email verified! But login was never blocked." });
+    user.emailOtp = null;
+    user.emailVerified = true;
+    await user.save();
+
+    res.json({ message: "Email verified successfully" });
+  } catch (e) {
+    console.error("❌ Verify Email Error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
-// LOGIN WITH PHONE (NO OTP CHECK)
+// ------------------- LOGIN -------------------
+
+// Login with phone
 router.post("/login-phone", async (req, res) => {
   const { phone } = req.body;
   const user = await User.findOne({ phone });
-  if (!user) return res.status(404).json({ message: "No user found" });
+  if (!user) return res.status(404).json({ message: "User not found" });
 
   const token = jwt.sign({ sub: user._id, phone }, process.env.JWT_SECRET, {
     expiresIn: "30d",
@@ -117,11 +138,11 @@ router.post("/login-phone", async (req, res) => {
   res.json({ token, user });
 });
 
-// LOGIN WITH EMAIL + OTP CHECK (OPTIONAL login method)
+// Login with email + OTP
 router.post("/login-email", async (req, res) => {
   const { email, code } = req.body;
   const user = await User.findOne({ email });
-  if (!user) return res.status(404).json({ message: "No user found" });
+  if (!user) return res.status(404).json({ message: "User not found" });
 
   if (!user.emailOtp || user.emailOtp.code !== hash(code))
     return res.status(400).json({ message: "Invalid OTP" });
@@ -129,7 +150,7 @@ router.post("/login-email", async (req, res) => {
   if (user.emailOtp.expiresAt < new Date())
     return res.status(400).json({ message: "OTP expired" });
 
-  user.emailOtp = undefined;
+  user.emailOtp = null;
   user.emailVerified = true;
   await user.save();
 
@@ -140,7 +161,8 @@ router.post("/login-email", async (req, res) => {
   res.json({ token, user });
 });
 
-// Update profile
+// ------------------- PROFILE UPDATE -------------------
+
 router.put("/profile", auth, async (req, res) => {
   const { name, avatar } = req.body;
   req.user.name = name || req.user.phone;
