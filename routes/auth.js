@@ -17,10 +17,11 @@ const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     type: "OAuth2",
-    user: process.env.EMAIL_USER,
+ //   user: process.env.EMAIL_USER,
+    user: "futurekgomotso@gmail.com", 
     clientId: process.env.CLIENT_ID,
     clientSecret: process.env.CLIENT_SECRET,
-    refreshToken: process.env.REFRESH_TOKEN, // ❗ fixed key
+    refreshToken: process.env.JWT_SECRET, // ❗ fixed key
   },
 });
 
