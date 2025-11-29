@@ -127,16 +127,45 @@ router.post("/verify-email", async (req, res) => {
 
 // Login with phone
 router.post("/login-phone", async (req, res) => {
-  const { phone } = req.body;
-  const user = await User.findOne({ phone });
-  if (!user) return res.status(404).json({ message: "User not found" });
+  try {
+    const { phone, code } = req.body;
+    const user = await User.findOne({ phone });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-  const token = jwt.sign({ sub: user._id, phone }, process.env.JWT_SECRET, {
-    expiresIn: "30d",
-  });
+    if (!user.emailVerified)
+      return res.status(403).json({ message: "Verify your email first" });
 
-  res.json({ token, user });
+    if (!user.emailOtp || user.emailOtp.code !== hash(code))
+      return res.status(400).json({ message: "Invalid OTP" });
+
+    if (user.emailOtp.expiresAt < new Date())
+      return res.status(400).json({ message: "OTP expired" });
+
+    user.emailOtp = null;
+    await user.save();
+
+    const token = jwt.sign(
+      { sub: user._id, phone: user.phone },
+      process.env.JWT_SECRET,
+      { expiresIn: "30d" }
+    );
+
+    // ✅ Only return what frontend needs
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        phone: user.phone,
+        avatar: user.avatar,
+      },
+    });
+  } catch (e) {
+    console.error("❌ Login failed:", e);
+    res.status(500).json({ message: "Login failed" });
+  }
 });
+
 
 // Login with email + OTP
 router.post("/login-email", async (req, res) => {
@@ -159,6 +188,35 @@ router.post("/login-email", async (req, res) => {
   });
 
   res.json({ token, user });
+});
+
+
+router.post("/login-phone-otp", async (req, res) => {
+  try {
+    const { phone } = req.body;
+    const user = await User.findOne({ phone });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!user.emailVerified)
+      return res.status(403).json({ message: "Verify your email first" });
+
+    const code = makeCode();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    user.emailOtp = { code: hash(code), expiresAt };
+    await user.save();
+
+    await transporter.sendMail({
+      to: user.email,
+      subject: "Login verification code",
+      text: `Your login code is: ${code}. It expires in 10 minutes.`,
+    });
+
+    res.json({ message: "OTP sent to email" });
+  } catch (e) {
+    console.error("❌ OTP request failed:", e);
+    res.status(500).json({ message: "OTP request failed" });
+  }
 });
 
 // ------------------- PROFILE UPDATE -------------------
