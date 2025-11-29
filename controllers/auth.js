@@ -36,7 +36,7 @@ const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: "famacloud.ai@gmail.com",
-    pass: process.env.EMAIL_PASS || "ffpf jnlu iqna rexl" , // Must be a Gmail APP PASSWORD
+    pass: "ffpf jnlu iqna rexl" , // Must be a Gmail APP PASSWORD
   },
   logger: true,
   debug: true,
