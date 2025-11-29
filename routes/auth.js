@@ -79,7 +79,7 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
     console.log("📤 Sending OTP to:", email);
 
     const mail = await transporter.sendMail({
-      from: `"No Reply" <quorvexinstitute@gmail.com>`,
+      from: `"No Reply" <famacloud.ai@gmail.com>`,
       to: email,
       subject: "Email Verification Code",
       text: `Your verification code is: ${code}\nIt expires in 15 minutes.`,
