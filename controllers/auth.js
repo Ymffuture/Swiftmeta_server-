@@ -35,12 +35,18 @@ const hashOtp = (code) =>
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: "famacloud.ai@gmail.com",
-    pass: "ffpf jnlu iqna rexl" , // Must be a Gmail APP PASSWORD
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS, // ✅ store in env vars
   },
+  tls: {
+    rejectUnauthorized: false,
+  },
+  port: 587,
+  secure: false,
   logger: true,
   debug: true,
 });
+
 
 
 export const register = [
@@ -101,18 +107,16 @@ export const login = async (req, res) => {
     const { phone } = req.body;
     const user = await User.findOne({ phone });
 
-    if (!user)
-      return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     if (!user.verified)
       return res.status(403).json({ message: "Verify your email first" });
 
     const otp = makeOtp();
     user.tempOtp = hashOtp(otp);
-    user.tempOtpExpires = Date.now() + 10 * 60 * 1000; // 10 mins
+    user.tempOtpExpires = Date.now() + 10 * 60 * 1000; // ✅ works now
     await user.save();
 
-    // Await mail to detect Gmail failure
     await transporter.sendMail({
       to: user.email,
       subject: "Login OTP",
@@ -126,34 +130,41 @@ export const login = async (req, res) => {
   }
 };
 
+
 export const verifyOtp = async (req, res) => {
   try {
     const { phone, otp } = req.body;
     const user = await User.findOne({ phone });
-    if (!user)
-      return res.status(404).json({ message: "User not found" });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     if (!user.tempOtp || user.tempOtp !== hashOtp(otp))
-      return res.status(400).json({ message: "Invalid OTP" });
+      return res.status(401).json({ message: "Invalid OTP" });
 
     if (Date.now() > user.tempOtpExpires)
-      return res.status(400).json({ message: "OTP expired" });
+      return res.status(401).json({ message: "OTP expired" });
+
+    user.tempOtp = null;
+    user.tempOtpExpires = null;
+    await user.save();
 
     const token = jwt.sign(
-      { sub: user._id, phone: user.phone },
+      { userId: user._id, phone: user.phone },
       process.env.JWT_SECRET,
       { expiresIn: "30d" }
     );
 
-    user.tempOtp = undefined;
-    await user.save();
-
-    res.json({ token, user: { name: user.name, avatar: user.avatar } });
+    res.json({
+      message: "Login success",
+      token,
+      user: { name: user.name, phone: user.phone, avatar: user.avatar },
+    });
   } catch (e) {
-    console.error("Verify OTP error:", e);
+    console.error("OTP verify error:", e);
     res.status(500).json({ message: "OTP verification failed" });
   }
 };
+
 
 export const verifyLoginOtp = async (req, res) => {
   try {
