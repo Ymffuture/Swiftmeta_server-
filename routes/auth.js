@@ -49,7 +49,6 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
     if (exists)
       return res.status(400).json({ message: "User already exists" });
 
-    // Upload avatar to Cloudinary if file exists
     let imageUrl = "";
     if (req.file) {
       const uploadResult = await cloud.uploader.upload(
@@ -61,49 +60,47 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
 
     // OTP setup
     const code = makeCode();
+    const hashedCode = hash(code);
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     const user = new User({
       phone,
       email,
-      name: name || phone,
+      name: name?.trim() || phone,
       avatar: imageUrl,
-      emailOtp: { code: hash(code), expiresAt },
-      emailVerified: false,
+      verified: false,
+      emailOtp: { code: hashedCode, expiresAt },
     });
 
     await user.save();
+    console.log("📌 OTP stored for:", email, user.emailOtp);
 
-    // Send Gmail OTP
-    let mail;
-    try {
-      mail = await transporter.sendMail({
-        from: `"No Reply" <famacloud.ai@gmail.com>`,
-        to: email,
-        subject: "Email Verification Code",
-        text: `Your verification code is: ${code}\nThe code expires in 15 minutes.`,
-      });
-    } catch (mailError) {
-      console.error("📧 Gmail Error:", mailError);
-      return res
-        .status(500)
-        .json({ message: "Verification email failed to send via Gmail" });
-    }
+    // 🚀 send OTP mail and log it
+    console.log("📤 Sending OTP to:", email);
 
-    console.log("✅ Gmail verification OTP sent:", mail.messageId);
-    res.json({ message: "Registration successful, verification email sent" });
+    const mail = await transporter.sendMail({
+      from: `"No Reply" <quorvexinstitute@gmail.com>`,
+      to: email,
+      subject: "Email Verification Code",
+      text: `Your verification code is: ${code}\nIt expires in 15 minutes.`,
+    });
+
+    console.log("✅ OTP mail sent:", mail.messageId);
+
+    res.json({ message: "Verification email sent" });
   } catch (e) {
-    console.error("❌ Registration Error:", e);
+    console.error("❌ Registration error:", e);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 // ------------------- EMAIL VERIFICATION -------------------
 
 router.post("/verify-email", async (req, res) => {
   try {
-    const { email, code } = req.body;
-    const user = await User.findOne({ email });
+    const { phone, code } = req.body;
+    const user = await User.findOne({ phone });
     if (!user) return res.status(404).json({ message: "User not found" });
 
     if (!user.emailOtp || user.emailOtp.code !== hash(code))
@@ -113,15 +110,16 @@ router.post("/verify-email", async (req, res) => {
       return res.status(400).json({ message: "OTP expired" });
 
     user.emailOtp = null;
-    user.emailVerified = true;
+    user.verified = true; // ✅ mark verified in DB
     await user.save();
 
-    res.json({ message: "Email verified successfully" });
+    res.json({ message: "Verified successfully" });
   } catch (e) {
-    console.error("❌ Verify Email Error:", e);
+    console.error("❌ Verification Error:", e);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 // ------------------- LOGIN -------------------
 
