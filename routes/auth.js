@@ -30,7 +30,7 @@ cloudinary.config({
 const oAuth2Client = new google.auth.OAuth2(
   process.env.CLIENT_ID,
   process.env.CLIENT_SECRET,
-  process.env.FRONTEND_URI
+  process.env.FRONTEND_URL
 );
 oAuth2Client.setCredentials({ refresh_token: process.env.REFRESH_TOKEN });
 
