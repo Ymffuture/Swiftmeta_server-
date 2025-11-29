@@ -9,48 +9,64 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import User from "../models/User.js";
-import auth from "../middleware/auth.js"; // middleware to read JWT
+import auth from "../middleware/auth.js";
+import { google } from "googleapis";
+import { OAuth2Client } from "google-auth-library";
 
-// Convert dirname for ES modules
+const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Cloudinary production config (replace with env vars)
+// ------------------- CLOUDINARY -------------------
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_API_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Multer for local temp before Cloudinary
-const upload = multer({ dest: path.join(__dirname, "..", "uploads/temp") });
+// ------------------- MULTER -------------------
+const uploadLocal = multer({ dest: path.join(__dirname, "..", "uploads/temp") });
+const uploadMem = multer({ storage: multer.memoryStorage() });
 
-// Generate 6 digit OTP
+// ------------------- HELPERS -------------------
 const makeOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
+const hashOtp = (code) => crypto.createHash("sha256").update(code).digest("hex");
 
-// Hash OTP before storage
-const hashOtp = (code) =>
-  crypto.createHash("sha256").update(code).digest("hex");
+// ------------------- GMAIL OAUTH2 SETUP -------------------
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
+const REDIRECT_URI = process.env.FRONTEND_URL;
+const REFRESH_TOKEN = process.env.JWT_SECRET;
+const GMAIL_USER = process.env.EMAIL_USER; // must match OAuth account
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // ✅ store in env vars
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-  port: 587,
-  secure: false,
-  logger: true,
-  debug: true,
-});
+const oauth2Client = new OAuth2Client(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
+oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
 
+async function getAccessToken() {
+  const { token } = await oauth2Client.getAccessToken();
+  if (!token) throw new Error("Failed to refresh Gmail access token");
+  return token;
+}
 
+async function mailTransport() {
+  const accessToken = await getAccessToken();
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      type: "OAuth2",
+      user: GMAIL_USER,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      refreshToken: REFRESH_TOKEN,
+      accessToken,
+    },
+  });
+}
+
+// ------------------- REGISTER -------------------
 
 export const register = [
-  upload.single("avatar"),
+  uploadLocal.single("avatar"),
   async (req, res) => {
     try {
       const { phone, email, password, name } = req.body;
@@ -69,38 +85,43 @@ export const register = [
           folder: "avatars",
         });
         avatarUrl = result.secure_url;
-        fs.unlinkSync(req.file.path); // clean local temp file
+        fs.unlinkSync(req.file.path);
       }
 
       const hashedPass = await bcrypt.hash(password, 10);
       const otp = makeOtp();
+
       const user = new User({
         phone,
         email,
         name: name || phone,
         password: hashedPass,
         tempOtp: hashOtp(otp),
-        tempOtpExpires: Date.now() + 15 * 60 * 1000, // 15 mins expiry
+        tempOtpExpires: Date.now() + 15 * 60 * 1000,
         avatar: avatarUrl,
         verified: false,
       });
 
       await user.save();
 
-      // Send verification email
-      await transporter.sendMail({
+      const transporter = await mailTransport();
+      const mail = await transporter.sendMail({
+        from: `"No Reply" <${GMAIL_USER}>`,
         to: email,
-        subject: "Verify your email",
-        text: `Welcome ${user.name}. Your verification code is: ${otp}`,
+        subject: "Email Verification Code",
+        text: `Your verification code is: ${otp}\nIt expires in 15 minutes.`,
       });
 
-      res.status(201).json({ message: "Registered, verification sent" });
+      console.log("✅ Gmail API OTP sent:", mail.messageId);
+      res.status(201).json({ message: "Registered, OTP sent to email" });
     } catch (e) {
-      console.error("Register error:", e);
+      console.error("❌ Register error:", e);
       res.status(500).json({ message: "Failed registration" });
     }
   },
 ];
+
+// ------------------- LOGIN -------------------
 
 export const login = async (req, res) => {
   try {
@@ -114,22 +135,26 @@ export const login = async (req, res) => {
 
     const otp = makeOtp();
     user.tempOtp = hashOtp(otp);
-    user.tempOtpExpires = Date.now() + 10 * 60 * 1000; // ✅ works now
+    user.tempOtpExpires = Date.now() + 10 * 60 * 1000;
     await user.save();
 
-    await transporter.sendMail({
+    const transporter = await mailTransport();
+    const mail = await transporter.sendMail({
+      from: `"No Reply" <${GMAIL_USER}>`,
       to: user.email,
-      subject: "Login OTP",
-      text: `Your login code is: ${otp}`,
+      subject: "Login verification code",
+      text: `Your login OTP is: ${otp}\nIt expires in 10 minutes.`,
     });
 
+    console.log("✅ Gmail API login OTP sent:", mail.messageId);
     res.json({ message: "OTP sent to email" });
   } catch (e) {
-    console.error("Login error:", e);
+    console.error("❌ Login error:", e);
     res.status(500).json({ message: "Login failed" });
   }
 };
 
+// ------------------- VERIFY LOGIN OTP -------------------
 
 export const verifyOtp = async (req, res) => {
   try {
@@ -160,59 +185,22 @@ export const verifyOtp = async (req, res) => {
       user: { name: user.name, phone: user.phone, avatar: user.avatar },
     });
   } catch (e) {
-    console.error("OTP verify error:", e);
+    console.error("❌ OTP verify error:", e);
     res.status(500).json({ message: "OTP verification failed" });
   }
 };
 
+// ------------------- PROFILE UPDATE -------------------
 
-export const verifyLoginOtp = async (req, res) => {
-  try {
-    const { phone, otp } = req.body;
-    const user = await User.findOne({ phone });
-
-    if (!user) return res.status(404).json({ message: "User not found" });
-    if (!user.tempOtp || Date.now() > user.tempOtpExpires)
-      return res.status(400).json({ message: "OTP expired or invalid" });
-
-    if (!compareOtp(otp, user.tempOtp))
-      return res.status(401).json({ message: "Wrong OTP" });
-
-    // ✅ OTP correct → clear OTP & issue token
-    user.tempOtp = null;
-    user.tempOtpExpires = null;
-    await user.save();
-
-    const token = jwt.sign(
-      { id: user._id, phone: user.phone },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    res.json({
-      message: "Login successful",
-      token, // client must store this
-      user: { name: user.name, phone: user.phone }
-    });
-
-  } catch (e) {
-    console.error("Verify login OTP error:", e);
-    res.status(500).json({ message: "Login failed" });
-  }
-};
-
-// Update profile avatar or name
 export const updateProfile = [
   auth,
-  upload.single("avatar"),
+  uploadLocal.single("avatar"),
   async (req, res) => {
     try {
       const { name } = req.body;
       const user = await User.findById(req.userId);
 
-      if (!user)
-        return res.status(404).json({ message: "No user" });
-
+      if (!user) return res.status(404).json({ message: "No user" });
       if (name) user.name = name;
 
       if (req.file) {
@@ -226,7 +214,7 @@ export const updateProfile = [
       await user.save();
       res.json({ user: { _id: user._id, name: user.name, avatar: user.avatar } });
     } catch (e) {
-      console.error("Profile update error:", e);
+      console.error("❌ Profile update error:", e);
       res.status(500).json({ message: "Profile update failed" });
     }
   },
