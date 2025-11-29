@@ -59,7 +59,7 @@ async function sendEmail(to, subject, message) {
 // ------------------- REGISTER -------------------
 router.post("/register", upload.single("avatar"), async (req, res) => {
   try {
-    const { phone, email, name, password } = req.body;
+    const { phone, email, name } = req.body;
     if (!phone || !email || !password)
       return res.status(400).json({ message: "All fields required" });
 
