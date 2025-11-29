@@ -36,7 +36,7 @@ const hash = (txt) => crypto.createHash("sha256").update(txt).digest("hex");
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: "quorvexinstitute@gmail.com",
+    user: "famacloud.ai@gmail.com",
     pass: process.env.EMAIL_PASS,
   },
 });
@@ -78,7 +78,7 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
 
     // Send OTP
     await transporter.sendMail({
-      from: `"No Reply" <quorvexinstitute@gmail.com>`,
+      from: `"No Reply" <famacloud.ai@gmail.com>`,
       to: email,
       subject: "Verify your email",
       text: `Your verification code is: ${emailCode} (expires in 15 mins)`,
