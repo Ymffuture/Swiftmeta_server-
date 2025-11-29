@@ -1,6 +1,6 @@
 import express from "express";
 const router = express.Router();
-import User from "../models/User";
+import User from "../models/User.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
