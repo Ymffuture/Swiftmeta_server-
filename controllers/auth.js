@@ -155,6 +155,41 @@ export const verifyOtp = async (req, res) => {
   }
 };
 
+export const verifyLoginOtp = async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+    const user = await User.findOne({ phone });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user.tempOtp || Date.now() > user.tempOtpExpires)
+      return res.status(400).json({ message: "OTP expired or invalid" });
+
+    if (!compareOtp(otp, user.tempOtp))
+      return res.status(401).json({ message: "Wrong OTP" });
+
+    // ✅ OTP correct → clear OTP & issue token
+    user.tempOtp = null;
+    user.tempOtpExpires = null;
+    await user.save();
+
+    const token = jwt.sign(
+      { id: user._id, phone: user.phone },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.json({
+      message: "Login successful",
+      token, // client must store this
+      user: { name: user.name, phone: user.phone }
+    });
+
+  } catch (e) {
+    console.error("Verify login OTP error:", e);
+    res.status(500).json({ message: "Login failed" });
+  }
+};
+
 // Update profile avatar or name
 export const updateProfile = [
   auth,
