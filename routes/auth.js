@@ -26,8 +26,8 @@ const hash = (txt) => crypto.createHash("sha256").update(txt).digest("hex");
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: "quorvexinstitute@gmail.com", // your Gmail
-    pass: process.env.EMAIL_PASS,       // Gmail App Password
+    user: "Famacloud.ai@gmail.com", // your Gmail
+    pass: "ffpf jnlu iqna rexl" ,       // Gmail App Password
   },
   logger: true,
   debug: true,
