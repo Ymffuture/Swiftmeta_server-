@@ -151,7 +151,7 @@ router.post("/request-login-otp", async (req, res) => {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     user.emailOtp = { code, expiresAt };
     await user.save();
-
+console.log(code) 
     if (NODE_ENV !== "development") {
       await transporter.sendMail({
         from: `"SwiftMeta" <${EMAIL_USER}>`,
