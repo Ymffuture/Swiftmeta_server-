@@ -15,8 +15,8 @@ function makeCode() {
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: "Famacloud.ai@gmail.com",
-    pass: process.env.EMAIL_APP_PASS, // 🔐 App Password stored in .env
+    user: "Famacloud.ai@gmail.com" || process.env.EMAIL_USER ,
+    pass: process.env.EMAIL_PASS, // 🔐 App Password stored in .env
   },
 });
 
