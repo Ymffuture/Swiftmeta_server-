@@ -1,3 +1,4 @@
+// routes/auth.js
 import express from "express";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
@@ -5,50 +6,54 @@ import multer from "multer";
 import User from "../models/User.js";
 
 const router = express.Router();
-const upload = multer(); // for multipart form data
+const upload = multer(); // handles multipart form data
 
-// ----------------------
-// ENV & Config
-// ----------------------
-const { EMAIL_USER, EMAIL_PASS, JWT_SECRET, NODE_ENV } = process.env;
+const NODE_ENV = process.env.NODE_ENV || "development";
+const EMAIL_USER = process.env.EMAIL_USER;
+const EMAIL_PASS = process.env.EMAIL_PASS;
+const JWT_SECRET = process.env.JWT_SECRET;
 
-if (!EMAIL_USER || !EMAIL_PASS) {
-  console.warn("⚠️ Missing EMAIL_USER or EMAIL_PASS in environment");
+if (!EMAIL_USER || !EMAIL_PASS || !JWT_SECRET) {
+  console.warn("⚠️ Missing EMAIL_USER, EMAIL_PASS, or JWT_SECRET in environment");
 }
 
-// Nodemailer transporter
+// -------------------
+// Nodemailer setup
+// -------------------
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false,
   auth: { user: EMAIL_USER, pass: EMAIL_PASS },
   tls: { rejectUnauthorized: false },
-  connectionTimeout: 20000,
-  socketTimeout: 20000,
-  greetingTimeout: 15000,
+  connectionTimeout: 20_000,
+  socketTimeout: 20_000,
+  greetingTimeout: 15_000,
 });
 
-transporter.verify((err) => {
+transporter.verify(err => {
   if (err) console.error("❌ Nodemailer verify failed:", err);
   else console.log("✅ Nodemailer ready");
 });
 
-// ----------------------
+// -------------------
 // Helpers
-// ----------------------
+// -------------------
 const makeCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-const isOtpValid = (userOtp, code) =>
-  userOtp && userOtp.code === code && userOtp.expiresAt > new Date();
+const isOtpValid = (otpObj, code) =>
+  otpObj && otpObj.code === code && otpObj.expiresAt > new Date();
 
-const persistToken = (user) =>
-  jwt.sign({ sub: user._id, email: user.email, phone: user.phone }, JWT_SECRET, { expiresIn: "30d" });
+const generateToken = (user) =>
+  jwt.sign({ sub: user._id, email: user.email, phone: user.phone }, JWT_SECRET, {
+    expiresIn: "30d",
+  });
 
-// ----------------------
+// -------------------
 // Routes
-// ----------------------
+// -------------------
 
-// Test email endpoint
+// Test email
 router.get("/test-email", async (req, res) => {
   try {
     const info = await transporter.sendMail({
@@ -63,21 +68,28 @@ router.get("/test-email", async (req, res) => {
   }
 });
 
-// ----------------------
+// -------------------
 // Registration & Email OTP
-// ----------------------
+// -------------------
 router.post("/register", upload.single("avatar"), async (req, res) => {
   try {
     const { phone, email, name } = req.body;
     if (!phone || !email) return res.status(400).json({ message: "Phone and email required" });
 
-    if (await User.findOne({ $or: [{ phone }, { email }] }))
-      return res.status(400).json({ message: "Phone or email already registered" });
+    const exists = await User.findOne({ $or: [{ phone }, { email }] });
+    if (exists) return res.status(400).json({ message: "Phone or email already registered" });
 
     const code = makeCode();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    const user = new User({ phone, email, name, emailOtp: { code, expiresAt }, verified: false });
+    const user = new User({
+      phone,
+      email,
+      name,
+      emailOtp: { code, expiresAt },
+      verified: false,
+    });
+
     await user.save();
 
     if (NODE_ENV !== "development") {
@@ -89,35 +101,44 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
       });
     }
 
-    res.json({ message: "Registered", otp: NODE_ENV === "development" ? code : undefined });
+    res.json({
+      message: "Registered successfully",
+      otp: NODE_ENV === "development" ? code : undefined,
+      expiresAt,
+    });
   } catch (err) {
+    console.error("REGISTER ERROR:", err);
     res.status(500).json({ message: "Server error while registering" });
   }
 });
 
+// Verify Email OTP
 router.post("/verify-email", async (req, res) => {
   try {
     const { email, code } = req.body;
-    if (!email || !code) return res.status(400).json({ message: "Email and code required" });
+    if (!email || !code) return res.status(400).json({ message: "Email and OTP required" });
 
     const user = await User.findOne({ email });
-    if (!user || !user.emailOtp) return res.status(400).json({ message: "OTP not found" });
+    if (!user || !user.emailOtp)
+      return res.status(400).json({ message: "User not found or OTP not requested" });
 
-    if (!isOtpValid(user.emailOtp, code)) return res.status(400).json({ message: "Invalid or expired OTP" });
+    if (!isOtpValid(user.emailOtp, code))
+      return res.status(400).json({ message: "Invalid or expired OTP" });
 
     user.emailOtp = undefined;
     user.verified = true;
     await user.save();
 
-    res.json({ message: "Email verified" });
+    res.json({ message: "Email verified successfully" });
   } catch (err) {
+    console.error("VERIFY EMAIL ERROR:", err);
     res.status(500).json({ message: "Server error verifying email" });
   }
 });
 
-// ----------------------
-// Login via email OTP (dev testing) & phone OTP
-// ----------------------
+// -------------------
+// Request Email OTP (login)
+// -------------------
 router.post("/request-login-otp", async (req, res) => {
   try {
     const { email } = req.body;
@@ -131,25 +152,27 @@ router.post("/request-login-otp", async (req, res) => {
     user.emailOtp = { code, expiresAt };
     await user.save();
 
-    // Send OTP in response only for development/testing
-    if (NODE_ENV === "development") {
-      return res.json({ message: "OTP generated", otp: code, expiresAt });
+    if (NODE_ENV !== "development") {
+      await transporter.sendMail({
+        from: `"SwiftMeta" <${EMAIL_USER}>`,
+        to: email,
+        subject: "Login OTP",
+        text: `Your login OTP: ${code}`,
+      });
     }
 
-    // In production, send email here
-    await transporter.sendMail({
-      from: `"SwiftMeta" <${EMAIL_USER}>`,
-      to: email,
-      subject: "Login OTP",
-      text: `Your login OTP: ${code}`,
+    res.json({
+      message: "OTP generated",
+      otp: NODE_ENV === "development" ? code : undefined,
+      expiresAt,
     });
-
-    res.json({ message: "OTP sent to email" });
   } catch (err) {
+    console.error("REQUEST LOGIN OTP ERROR:", err);
     res.status(500).json({ message: "Server error requesting login OTP" });
   }
 });
 
+// Verify Email Login OTP
 router.post("/verify-login-otp", async (req, res) => {
   try {
     const { email, code } = req.body;
@@ -158,21 +181,23 @@ router.post("/verify-login-otp", async (req, res) => {
     const user = await User.findOne({ email });
     if (!user || !user.emailOtp) return res.status(400).json({ message: "OTP not requested" });
 
-    if (!isOtpValid(user.emailOtp, code)) return res.status(400).json({ message: "Invalid or expired OTP" });
+    if (!isOtpValid(user.emailOtp, code))
+      return res.status(400).json({ message: "Invalid or expired OTP" });
 
-    const token = persistToken(user);
+    const token = generateToken(user);
     user.emailOtp = undefined;
     await user.save();
 
     res.json({ message: "Login successful", token, user });
   } catch (err) {
+    console.error("VERIFY LOGIN OTP ERROR:", err);
     res.status(500).json({ message: "Server error verifying login OTP" });
   }
 });
 
-// ----------------------
-// Phone OTP login
-// ----------------------
+// -------------------
+// Request Phone OTP
+// -------------------
 router.post("/request-phone-otp", async (req, res) => {
   try {
     const { phone } = req.body;
@@ -186,35 +211,43 @@ router.post("/request-phone-otp", async (req, res) => {
     user.phoneOtp = { code, expiresAt };
     await user.save();
 
-    res.json({ message: "Phone OTP generated (SMS service pending)" });
+    res.json({
+      message: "Phone OTP generated",
+      otp: NODE_ENV === "development" ? code : undefined,
+      expiresAt,
+    });
   } catch (err) {
+    console.error("REQUEST PHONE OTP ERROR:", err);
     res.status(500).json({ message: "Server error requesting phone OTP" });
   }
 });
 
+// Verify Phone OTP
 router.post("/verify-phone", async (req, res) => {
   try {
     const { phone, code } = req.body;
-    if (!phone || !code) return res.status(400).json({ message: "Phone and code required" });
+    if (!phone || !code) return res.status(400).json({ message: "Phone and OTP required" });
 
     const user = await User.findOne({ phone });
     if (!user || !user.phoneOtp) return res.status(400).json({ message: "OTP not requested" });
 
-    if (!isOtpValid(user.phoneOtp, code)) return res.status(400).json({ message: "Invalid or expired OTP" });
+    if (!isOtpValid(user.phoneOtp, code))
+      return res.status(400).json({ message: "Invalid or expired OTP" });
 
-    const token = persistToken(user);
+    const token = generateToken(user);
     user.phoneOtp = undefined;
     await user.save();
 
-    res.json({ token, user });
+    res.json({ message: "Login successful", token, user });
   } catch (err) {
+    console.error("VERIFY PHONE OTP ERROR:", err);
     res.status(500).json({ message: "Server error verifying phone OTP" });
   }
 });
 
-// ----------------------
-// Standard email/password login
-// ----------------------
+// -------------------
+// Email + Password login
+// -------------------
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -228,10 +261,11 @@ router.post("/login", async (req, res) => {
 
     if (!user.verified) return res.status(403).json({ message: "Email not verified" });
 
-    const token = persistToken(user);
-    res.json({ token, user });
+    const token = generateToken(user);
+    res.json({ message: "Login successful", token, user });
   } catch (err) {
-    res.status(500).json({ message: "Server error while logging in" });
+    console.error("LOGIN ERROR:", err);
+    res.status(500).json({ message: "Server error logging in" });
   }
 });
 
