@@ -11,19 +11,15 @@ const upload = multer(); // ✅ enables multipart body parsing
 function makeCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
-
-// ✅ Correct OAuth2 transporter config
+// ✅ Correct Gmail transporter using App Password
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    type: "OAuth2",
- //   user: process.env.EMAIL_USER,
-    user: "futurekgomotso@gmail.com", 
-    clientId: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
-    refreshToken: process.env.JWT_SECRET, // ❗ fixed key
+    user: "Famacloud.ai@gmail.com",
+    pass: process.env.EMAIL_APP_PASS, // 🔐 App Password stored in .env
   },
 });
+
 
 // ✅ Register + send email OTP
 router.post("/register", upload.single("avatar"), async (req, res) => {
@@ -43,11 +39,12 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
     await user.save();
 
     await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "SwiftMeta — email verification code",
-      text: `Your OTP is: ${code}`,
-    });
+  from: `"SwiftMeta" <famacloud.ai@gmail.com>`,
+  to: email,
+  subject: "SwiftMeta — email verification code",
+  text: `Your OTP is: ${code}`,
+});
+
 
     res.json({ message: "Registered, OTP sent to email" });
   } catch (err) {
