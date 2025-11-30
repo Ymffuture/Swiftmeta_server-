@@ -24,14 +24,21 @@ if (!EMAIL_USER || !EMAIL_PASS) {
 
 // Setup Gmail transporter using App Password
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false, // false for 587, true only for 465
   auth: {
-    user: EMAIL_USER,
-    pass: EMAIL_PASS,
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS, // 16-char Gmail App Password
   },
-  connectionTimeout: 10_000,
-  greetingTimeout: 10_000,
+  tls: {
+    rejectUnauthorized: false, // prevents TLS block in some clouds
+  },
+  connectionTimeout: 20_000,
+  socketTimeout: 20_000,
+  greetingTimeout: 15_000,
 });
+
 
 // Verify transporter at startup
 transporter.verify((err) => {
@@ -56,6 +63,33 @@ router.get("/test-email", async (req, res) => {
     console.error("TEST EMAIL ERROR:", err);
     return res.status(500).json({ ok: false, error: err.message, stack: err.stack });
   }
+});
+
+router.get("/email-diagnostics", async (req, res) => {
+  const report = {};
+  try {
+    await transporter.verify();
+    report.smtp = "reachable";
+  } catch (err) {
+    report.smtp = {
+      error: err.message,
+      code: err.code || null,
+    };
+  }
+
+  try {
+    const test = await transporter.sendMail({
+      from: `"SMTP Test" <${process.env.EMAIL_USER}>`,
+      to: process.env.EMAIL_USER,
+      subject: "Diagnostics ping",
+      text: "Mail channel test",
+    });
+    report.mail = test.response;
+  } catch (mailErr) {
+    report.mail = { error: mailErr.message };
+  }
+
+  res.json({ ok: false, environmentReport: report });
 });
 
 // Register and send email OTP
