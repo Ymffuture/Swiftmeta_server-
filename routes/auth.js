@@ -150,6 +150,60 @@ router.post("/verify-email", async (req, res) => {
     res.status(500).json({ message: "Server error verifying email" });
   }
 });
+// Request login OTP via email (sent to frontend for testing)
+router.post("/request-login-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email required" });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: "No account linked to this email" });
+
+    // Generate OTP valid for 10 minutes
+    const code = makeCode();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    user.emailOtp = { code, expiresAt };
+    await user.save();
+
+    // **Send OTP in response instead of email**
+    res.json({
+      message: "OTP generated (for testing, sent to frontend)",
+      otp: code,          // <<< FRONTEND CAN USE THIS OTP
+      expiresAt,
+    });
+  } catch (err) {
+    console.error("REQUEST LOGIN OTP FAILED:", err);
+    res.status(500).json({ message: "Server error requesting login OTP" });
+  }
+});
+
+// Verify login OTP and issue JWT
+router.post("/verify-login-otp", async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) return res.status(400).json({ message: "Email and OTP required" });
+
+    const user = await User.findOne({ email });
+    if (!user || !user.emailOtp) return res.status(400).json({ message: "OTP not requested" });
+
+    if (user.emailOtp.code !== code || user.emailOtp.expiresAt < new Date()) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    // OTP valid, issue JWT
+    const token = jwt.sign({ sub: user._id, email: user.email }, JWT_SECRET, { expiresIn: "30d" });
+
+    user.emailOtp = undefined; // clear OTP
+    await user.save();
+
+    res.json({ message: "Login successful", token, user });
+  } catch (err) {
+    console.error("VERIFY LOGIN OTP FAILED:", err);
+    res.status(500).json({ message: "Server error verifying login OTP" });
+  }
+});
+
 
 // Request phone login OTP (SMS not implemented yet)
 router.post("/request-phone-otp", async (req, res) => {
