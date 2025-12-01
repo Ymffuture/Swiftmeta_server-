@@ -90,6 +90,9 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     const user = new User({ phone, email, name, emailOtp: { code, expiresAt }, verified: false });
+    if (req.file) {
+      user.avatar = req.file.buffer; // Assuming avatar is stored as Buffer; adjust if using URL or path
+    }
     await user.save();
 
     console.log("📩 Registration OTP:", code);
@@ -102,6 +105,32 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
   } catch (err) {
     console.error("REGISTER ERROR:", err);
     res.status(500).json({ message: "Server error while registering" });
+  }
+});
+
+// -------------------
+// Verify Registration OTP
+// -------------------
+router.post("/verify-registration-otp", async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) return res.status(400).json({ message: "Email and OTP required" });
+
+    const user = await User.findOne({ email });
+    if (!user || !user.emailOtp) return res.status(400).json({ message: "OTP not requested or user not found" });
+
+    if (!isOtpValid(user.emailOtp, code)) return res.status(400).json({ message: "Invalid or expired OTP" });
+
+    user.verified = true;
+    user.emailOtp = undefined;
+    await user.save();
+
+    const token = generateToken(user);
+
+    res.json({ message: "Verification successful", token, user });
+  } catch (err) {
+    console.error("VERIFY REGISTRATION OTP ERROR:", err);
+    res.status(500).json({ message: "Server error verifying registration OTP" });
   }
 });
 
