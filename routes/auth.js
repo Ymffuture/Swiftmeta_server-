@@ -1,6 +1,7 @@
 import express from "express";
 import jwt from "jsonwebtoken";
-import { TransactionalEmailsApi, ApiClient } from "@getbrevo/brevo";
+import pkg from "@getbrevo/brevo";
+const { TransactionalEmailsApi, ApiClient } = pkg;
 import multer from "multer";
 import User from "../models/User.js";
 
