@@ -1,6 +1,6 @@
 import express from "express";
 import jwt from "jsonwebtoken";
-import Brevo from "@getbrevo/brevo";
+import { TransactionalEmailsApi, ApiClient } from "@getbrevo/brevo";
 import multer from "multer";
 import User from "../models/User.js";
 
@@ -13,7 +13,7 @@ const upload = multer();
 const NODE_ENV = process.env.NODE_ENV || "development";
 const EMAIL_USER = process.env.EMAIL_USER;
 const JWT_SECRET = process.env.JWT_SECRET;
-const BREVO_API_KEY = process.env.EMAIL_PASS;
+const BREVO_API_KEY = process.env.BREVO_API_KEY; // Must be Brevo SMTP/API key
 
 if (!EMAIL_USER || !JWT_SECRET || !BREVO_API_KEY) {
   console.warn("⚠️ Missing required email or JWT environment variables");
@@ -22,9 +22,10 @@ if (!EMAIL_USER || !JWT_SECRET || !BREVO_API_KEY) {
 // -------------------
 // Brevo API setup
 // -------------------
-const client = Brevo.ApiClient.instance;
+const client = ApiClient.instance;
 client.authentications["api-key"].apiKey = BREVO_API_KEY;
-const emailAPI = new Brevo.TransactionalEmailsApi();
+
+const emailAPI = new TransactionalEmailsApi();
 
 // -------------------
 // Helpers
@@ -39,7 +40,6 @@ const generateToken = (user) =>
     expiresIn: "30d",
   });
 
-// Reusable OTP sender
 async function sendOTPEmail(to, otp, subject = "Your OTP Code") {
   await emailAPI.sendTransacEmail({
     sender: { email: EMAIL_USER, name: "SwiftMeta Auth" },
@@ -59,7 +59,7 @@ async function sendOTPEmail(to, otp, subject = "Your OTP Code") {
 // Routes
 // -------------------
 
-// API test email
+// Test email
 router.get("/test-email", async (req, res) => {
   try {
     await emailAPI.sendTransacEmail({
@@ -68,9 +68,9 @@ router.get("/test-email", async (req, res) => {
       subject: "Brevo API Test",
       htmlContent: `<p>Test successful at ${new Date().toISOString()}</p>`
     });
-
-    res.json({ ok: true, message: "Test email sent via API" });
+    res.json({ ok: true, message: "Test email sent via Brevo API" });
   } catch (err) {
+    console.error("TEST EMAIL ERROR:", err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -89,27 +89,16 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
     const code = makeCode();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    const user = new User({
-      phone,
-      email,
-      name,
-      emailOtp: { code, expiresAt },
-      verified: false,
-    });
-
+    const user = new User({ phone, email, name, emailOtp: { code, expiresAt }, verified: false });
     await user.save();
+
     console.log("📩 Registration OTP:", code);
 
     if (NODE_ENV !== "development") {
       await sendOTPEmail(email, code, "Account Verification Code");
     }
 
-    res.json({
-      message: "Registered successfully",
-      otp: NODE_ENV === "development" ? code : undefined,
-      expiresAt,
-    });
-
+    res.json({ message: "Registered successfully", otp: NODE_ENV === "development" ? code : undefined, expiresAt });
   } catch (err) {
     console.error("REGISTER ERROR:", err);
     res.status(500).json({ message: "Server error while registering" });
@@ -129,7 +118,6 @@ router.post("/request-login-otp", async (req, res) => {
 
     const code = makeCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
     user.emailOtp = { code, expiresAt };
     await user.save();
 
@@ -139,12 +127,7 @@ router.post("/request-login-otp", async (req, res) => {
       await sendOTPEmail(email, code, "Your Login OTP");
     }
 
-    res.json({
-      message: "OTP sent",
-      otp: NODE_ENV === "development" ? code : undefined,
-      expiresAt,
-    });
-
+    res.json({ message: "OTP sent", otp: NODE_ENV === "development" ? code : undefined, expiresAt });
   } catch (err) {
     console.error("REQUEST LOGIN OTP ERROR:", err);
     res.status(500).json({ message: "Server error requesting login OTP" });
@@ -162,15 +145,13 @@ router.post("/verify-login-otp", async (req, res) => {
     const user = await User.findOne({ email });
     if (!user || !user.emailOtp) return res.status(400).json({ message: "OTP not requested" });
 
-    if (!isOtpValid(user.emailOtp, code))
-      return res.status(400).json({ message: "Invalid or expired OTP" });
+    if (!isOtpValid(user.emailOtp, code)) return res.status(400).json({ message: "Invalid or expired OTP" });
 
     const token = generateToken(user);
     user.emailOtp = undefined;
     await user.save();
 
     res.json({ message: "Login successful", token, user });
-
   } catch (err) {
     console.error("VERIFY LOGIN OTP ERROR:", err);
     res.status(500).json({ message: "Server error verifying login OTP" });
@@ -178,7 +159,7 @@ router.post("/verify-login-otp", async (req, res) => {
 });
 
 // -------------------
-// Password login (JWT)
+// Password login
 // -------------------
 router.post("/login", async (req, res) => {
   try {
@@ -195,7 +176,6 @@ router.post("/login", async (req, res) => {
 
     const token = generateToken(user);
     res.json({ message: "Login successful", token, user });
-
   } catch (err) {
     console.error("LOGIN ERROR:", err);
     res.status(500).json({ message: "Server error logging in" });
