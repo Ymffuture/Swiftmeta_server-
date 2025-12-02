@@ -1,32 +1,42 @@
 import express from "express";
 import jwt from "jsonwebtoken";
-import pkg from "@getbrevo/brevo";
-const { TransactionalEmailsApi, ApiClient } = pkg;
+import nodemailer from "nodemailer";
 import multer from "multer";
 import User from "../models/User.js";
 
 const router = express.Router();
 const upload = multer();
 
-// -------------------
-// Environment
-// -------------------
 const NODE_ENV = process.env.NODE_ENV || "development";
 const EMAIL_USER = process.env.EMAIL_USER;
+const EMAIL_PASS = process.env.EMAIL_PASS;
 const JWT_SECRET = process.env.JWT_SECRET;
-const BREVO_API_KEY = process.env.BREVO_API_KEY; // Must be Brevo SMTP/API key
 
-if (!EMAIL_USER || !JWT_SECRET || !BREVO_API_KEY) {
-  console.warn("⚠️ Missing required email or JWT environment variables");
+if (!EMAIL_USER || !EMAIL_PASS || !JWT_SECRET) {
+  console.warn("⚠️ Missing EMAIL_USER, EMAIL_PASS, or JWT_SECRET in environment");
 }
 
 // -------------------
-// Brevo API setup
+// Brevo SMTP setup
 // -------------------
-const client = ApiClient.instance;
-client.authentications["api-key"].apiKey = BREVO_API_KEY;
+const transporter = nodemailer.createTransport({
+  host: "smtp-relay.brevo.com",
+  port: 587,
+  secure: false, // TLS
+  auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+  tls: { rejectUnauthorized: true },
+  pool: true,
+  maxConnections: 5,
+  maxMessages: 200,
+  connectionTimeout: 20_000,
+  socketTimeout: 20_000,
+  greetingTimeout: 10_000,
+});
 
-const emailAPI = new TransactionalEmailsApi();
+transporter.verify(err => {
+  if (err) console.error("❌ Brevo SMTP verify failed:", err.message);
+  else console.log("✅ Brevo SMTP ready");
+});
 
 // -------------------
 // Helpers
@@ -41,43 +51,27 @@ const generateToken = (user) =>
     expiresIn: "30d",
   });
 
-async function sendOTPEmail(to, otp, subject = "Your OTP Code") {
-  await emailAPI.sendTransacEmail({
-    sender: { email: EMAIL_USER, name: "SwiftMeta Auth" },
-    to: [{ email: to }],
-    subject,
-    htmlContent: `
-      <div style="font-family:sans-serif;padding:20px">
-        <h2>Your code</h2>
-        <p style="font-size:24px;font-weight:bold">${otp}</p>
-        <p>Expires soon — don't share it.</p>
-      </div>
-    `
-  });
-}
-
 // -------------------
 // Routes
 // -------------------
 
-// Test email
+// SMTP test email
 router.get("/test-email", async (req, res) => {
   try {
-    await emailAPI.sendTransacEmail({
-      sender: { email: EMAIL_USER, name: "SwiftMeta Test" },
-      to: [{ email: EMAIL_USER }],
-      subject: "Brevo API Test",
-      htmlContent: `<p>Test successful at ${new Date().toISOString()}</p>`
+    const info = await transporter.sendMail({
+      from: `"SwiftMeta Test" <${EMAIL_USER}>`,
+      to: EMAIL_USER,
+      subject: "Brevo SMTP Test",
+      text: `Test successful at ${new Date().toISOString()}`,
     });
-    res.json({ ok: true, message: "Test email sent via Brevo API" });
+    res.json({ ok: true, response: info.response });
   } catch (err) {
-    console.error("TEST EMAIL ERROR:", err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
 // -------------------
-// Registration Email OTP
+// Registration & Email OTP
 // -------------------
 router.post("/register", upload.single("avatar"), async (req, res) => {
   try {
@@ -90,53 +84,63 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
     const code = makeCode();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    const user = new User({ phone, email, name, emailOtp: { code, expiresAt }, verified: false });
-    if (req.file) {
-      user.avatar = req.file.buffer; // Assuming avatar is stored as Buffer; adjust if using URL or path
-    }
-    await user.save();
+    const user = new User({
+      phone,
+      email,
+      name,
+      emailOtp: { code, expiresAt },
+      verified: false,
+    });
 
+    await user.save();
     console.log("📩 Registration OTP:", code);
 
     if (NODE_ENV !== "development") {
-      await sendOTPEmail(email, code, "Account Verification Code");
+      await transporter.sendMail({
+        from: `"SwiftMeta" <${EMAIL_USER}>`,
+        to: email,
+        subject: "Account verification",
+        text: `Your verification code is: ${code}`,
+      });
     }
 
-    res.json({ message: "Registered successfully", otp: NODE_ENV === "development" ? code : undefined, expiresAt });
+    res.json({
+      message: "Registered successfully",
+      otp: NODE_ENV === "development" ? code : undefined,
+      expiresAt,
+    });
   } catch (err) {
     console.error("REGISTER ERROR:", err);
     res.status(500).json({ message: "Server error while registering" });
   }
 });
 
-// -------------------
-// Verify Registration OTP
-// -------------------
-router.post("/verify-registration-otp", async (req, res) => {
+// Verify email
+router.post("/verify-email", async (req, res) => {
   try {
     const { email, code } = req.body;
     if (!email || !code) return res.status(400).json({ message: "Email and OTP required" });
 
     const user = await User.findOne({ email });
-    if (!user || !user.emailOtp) return res.status(400).json({ message: "OTP not requested or user not found" });
+    if (!user || !user.emailOtp)
+      return res.status(400).json({ message: "User not found or OTP not requested" });
 
-    if (!isOtpValid(user.emailOtp, code)) return res.status(400).json({ message: "Invalid or expired OTP" });
+    if (!isOtpValid(user.emailOtp, code))
+      return res.status(400).json({ message: "Invalid or expired OTP" });
 
-    user.verified = true;
     user.emailOtp = undefined;
+    user.verified = true;
     await user.save();
 
-    const token = generateToken(user);
-
-    res.json({ message: "Verification successful", token, user });
+    res.json({ message: "Email verified successfully" });
   } catch (err) {
-    console.error("VERIFY REGISTRATION OTP ERROR:", err);
-    res.status(500).json({ message: "Server error verifying registration OTP" });
+    console.error("VERIFY EMAIL ERROR:", err);
+    res.status(500).json({ message: "Server error verifying email" });
   }
 });
 
 // -------------------
-// Login OTP
+// Login email OTP
 // -------------------
 router.post("/request-login-otp", async (req, res) => {
   try {
@@ -144,29 +148,35 @@ router.post("/request-login-otp", async (req, res) => {
     if (!email) return res.status(400).json({ message: "Email required" });
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "No user found with this email" });
+    if (!user) return res.status(400).json({ message: "No account linked to this email" });
 
     const code = makeCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     user.emailOtp = { code, expiresAt };
     await user.save();
-
     console.log("🔐 Login OTP:", code);
 
     if (NODE_ENV !== "development") {
-      await sendOTPEmail(email, code, "Your Login OTP");
+      await transporter.sendMail({
+        from: `"SwiftMeta Auth" <${EMAIL_USER}>`,
+        to: email,
+        subject: "Login code",
+        text: `Your login code is: ${code}. It expires in 10 minutes.`,
+      });
     }
 
-    res.json({ message: "OTP sent", otp: NODE_ENV === "development" ? code : undefined, expiresAt });
+    res.json({
+      message: "OTP sent",
+      otp: NODE_ENV === "development" ? code : undefined,
+      expiresAt,
+    });
   } catch (err) {
     console.error("REQUEST LOGIN OTP ERROR:", err);
     res.status(500).json({ message: "Server error requesting login OTP" });
   }
 });
 
-// -------------------
-// Verify Login OTP
-// -------------------
+// Verify login OTP
 router.post("/verify-login-otp", async (req, res) => {
   try {
     const { email, code } = req.body;
@@ -175,7 +185,8 @@ router.post("/verify-login-otp", async (req, res) => {
     const user = await User.findOne({ email });
     if (!user || !user.emailOtp) return res.status(400).json({ message: "OTP not requested" });
 
-    if (!isOtpValid(user.emailOtp, code)) return res.status(400).json({ message: "Invalid or expired OTP" });
+    if (!isOtpValid(user.emailOtp, code))
+      return res.status(400).json({ message: "Invalid or expired OTP" });
 
     const token = generateToken(user);
     user.emailOtp = undefined;
@@ -185,30 +196,6 @@ router.post("/verify-login-otp", async (req, res) => {
   } catch (err) {
     console.error("VERIFY LOGIN OTP ERROR:", err);
     res.status(500).json({ message: "Server error verifying login OTP" });
-  }
-});
-
-// -------------------
-// Password login
-// -------------------
-router.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ message: "Email and password required" });
-
-    const user = await User.findOne({ email }).select("+password");
-    if (!user) return res.status(401).json({ message: "Invalid credentials" });
-
-    const match = await user.comparePassword(password);
-    if (!match) return res.status(401).json({ message: "Invalid credentials" });
-
-    if (!user.verified) return res.status(403).json({ message: "Email not verified" });
-
-    const token = generateToken(user);
-    res.json({ message: "Login successful", token, user });
-  } catch (err) {
-    console.error("LOGIN ERROR:", err);
-    res.status(500).json({ message: "Server error logging in" });
   }
 });
 
