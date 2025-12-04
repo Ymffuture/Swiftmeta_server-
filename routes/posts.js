@@ -187,4 +187,127 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 });
 
 
+import multer from "multer";
+const upload = multer({ dest: "/tmp/uploads" });
+
+// -------------------- POSTS --------------------
+
+
+
+
+
+// -------------------- COMMENTS --------------------
+
+// Add comment to a post
+router.post("/:postId/comments", auth, async (req, res) => {
+  try {
+    const { text } = req.body;
+    const post = await Post.findById(req.params.postId);
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    const comment = new Comment({
+      post: post._id,
+      author: req.user._id,
+      text,
+      replies: [],
+      likes: []
+    });
+
+    await comment.save();
+    const populated = await comment.populate("author", "name avatar phone");
+    res.json(populated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Like/unlike comment
+router.post("/:postId/comments/:commentId/like", auth, async (req, res) => {
+  try {
+    const comment = await Comment.findById(req.params.commentId);
+    if (!comment) return res.status(404).json({ error: "Comment not found" });
+
+    const uid = String(req.user._id);
+    const idx = comment.likes.findIndex((x) => String(x) === uid);
+
+    if (idx === -1) comment.likes.push(req.user._id);
+    else comment.likes.splice(idx, 1);
+
+    await comment.save();
+    res.json({ liked: idx === -1, likesCount: comment.likes.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Get paginated replies
+router.get("/:postId/comments/:commentId/replies", async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page || "1", 10));
+    const pageSize = Math.min(50, parseInt(req.query.pageSize || "5", 10));
+
+    const comment = await Comment.findById(req.params.commentId).lean();
+    if (!comment) return res.status(404).json({ error: "Comment not found" });
+
+    const total = comment.replies.length;
+    const start = (page - 1) * pageSize;
+    const paged = comment.replies.slice(start, start + pageSize);
+
+    res.json({ replies: paged, page, pageSize, total });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Add reply
+router.post("/:postId/comments/:commentId/replies", auth, async (req, res) => {
+  try {
+    const comment = await Comment.findById(req.params.commentId);
+    if (!comment) return res.status(404).json({ error: "Comment not found" });
+
+    const reply = {
+      text: req.body.text,
+      author: req.user._id,
+      likes: [],
+      createdAt: new Date(),
+    };
+
+    comment.replies.push(reply);
+    await comment.save();
+    const savedReply = comment.replies[comment.replies.length - 1];
+    res.json(savedReply);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Like/unlike reply
+router.post("/:postId/comments/:commentId/replies/:replyId/like", auth, async (req, res) => {
+  try {
+    const comment = await Comment.findById(req.params.commentId);
+    if (!comment) return res.status(404).json({ error: "Comment not found" });
+
+    const reply = comment.replies.id(req.params.replyId);
+    if (!reply) return res.status(404).json({ error: "Reply not found" });
+
+    const uid = String(req.user._id);
+    const idx = reply.likes.findIndex((x) => String(x) === uid);
+
+    if (idx === -1) reply.likes.push(req.user._id);
+    else reply.likes.splice(idx, 1);
+
+    await comment.save();
+    res.json({ liked: idx === -1, likesCount: reply.likes.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 export default router;
+
+
