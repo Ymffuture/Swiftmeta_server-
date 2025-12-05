@@ -18,7 +18,9 @@ if (!EMAIL_USER || !EMAIL_PASS || !JWT_SECRET || !BREVO_API_KEY) {
   console.warn("⚠️ Missing environment variables");
 }
 
-// Brevo SMTP setup
+// =======================
+// SMTP Transporter
+// =======================
 const transporter = nodemailer.createTransport({
   host: "smtp-relay.brevo.com",
   port: 587,
@@ -28,9 +30,9 @@ const transporter = nodemailer.createTransport({
   pool: true,
   maxConnections: 5,
   maxMessages: 200,
-  connectionTimeout: 20_000,
-  socketTimeout: 20_000,
-  greetingTimeout: 10_000,
+  connectionTimeout: 20000,
+  socketTimeout: 20000,
+  greetingTimeout: 10000,
 });
 
 transporter.verify(err => {
@@ -38,8 +40,11 @@ transporter.verify(err => {
   else console.log("✅ Brevo SMTP ready");
 });
 
+// =======================
 // Helpers
-const makeCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+// =======================
+const makeCode = () =>
+  Math.floor(100000 + Math.random() * 900000).toString();
 
 const isOtpValid = (otpObj, code) =>
   otpObj && otpObj.code === code && otpObj.expiresAt > new Date();
@@ -50,7 +55,7 @@ const generateToken = (user) =>
   });
 
 const sendSms = async (recipient, content, sender = "SwiftMeta") => {
-  const url = 'https://api.brevo.com/v3/transactionalSMS/send';
+  const url = "https://api.brevo.com/v3/transactionalSMS/send";
   const data = {
     sender,
     recipient,
@@ -59,17 +64,39 @@ const sendSms = async (recipient, content, sender = "SwiftMeta") => {
   };
   const config = {
     headers: {
-      'accept': 'application/json',
-      'api-key': BREVO_API_KEY,
-      'content-type': 'application/json'
-    }
+      accept: "application/json",
+      "api-key": BREVO_API_KEY,
+      "content-type": "application/json",
+    },
   };
   await axios.post(url, data, config);
 };
 
-// Routes
+// =======================
+// JWT BLACKLIST FOR LOGOUT
+// =======================
+const tokenBlacklist = new Set();
 
-// SMTP test email
+function checkBlacklist(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header)
+    return res.status(401).json({ message: "No token provided" });
+
+  const token = header.split(" ")[1];
+  if (!token)
+    return res.status(401).json({ message: "No token provided" });
+
+  if (tokenBlacklist.has(token))
+    return res.status(401).json({ message: "Token has been logged out" });
+
+  next();
+}
+
+// =======================
+// Routes
+// =======================
+
+// Test email
 router.get("/test-email", async (req, res) => {
   try {
     const info = await transporter.sendMail({
@@ -84,14 +111,18 @@ router.get("/test-email", async (req, res) => {
   }
 });
 
-// Registration & OTPs
+// ---------------------------
+// Register
+// ---------------------------
 router.post("/register", upload.single("avatar"), async (req, res) => {
   try {
     const { phone, email, name } = req.body;
-    if (!phone || !email) return res.status(400).json({ message: "Phone and email required" });
+    if (!phone || !email)
+      return res.status(400).json({ message: "Phone and email required" });
 
     const exists = await User.findOne({ $or: [{ phone }, { email }] });
-    if (exists) return res.status(400).json({ message: "Phone or email already registered" });
+    if (exists)
+      return res.status(400).json({ message: "Phone or email already registered" });
 
     const emailCode = makeCode();
     const phoneCode = makeCode();
@@ -132,11 +163,12 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
   }
 });
 
-// Verify email
+// ---------------------------
+// Verify Email
+// ---------------------------
 router.post("/verify-email", async (req, res) => {
   try {
     const { email, code } = req.body;
-    if (!email || !code) return res.status(400).json({ message: "Email and OTP required" });
 
     const user = await User.findOne({ email });
     if (!user || !user.emailOtp)
@@ -146,7 +178,7 @@ router.post("/verify-email", async (req, res) => {
       return res.status(400).json({ message: "Invalid or expired OTP" });
 
     user.emailOtp = undefined;
-    user.verified = !user.phoneOtp; // Set verified if both verified
+    user.verified = !user.phoneOtp;
     await user.save();
 
     res.json({ message: "Email verified successfully" });
@@ -156,11 +188,12 @@ router.post("/verify-email", async (req, res) => {
   }
 });
 
-// Verify phone
+// ---------------------------
+// Verify Phone
+// ---------------------------
 router.post("/verify-phone", async (req, res) => {
   try {
     const { phone, code } = req.body;
-    if (!phone || !code) return res.status(400).json({ message: "Phone and OTP required" });
 
     const user = await User.findOne({ phone });
     if (!user || !user.phoneOtp)
@@ -170,7 +203,7 @@ router.post("/verify-phone", async (req, res) => {
       return res.status(400).json({ message: "Invalid or expired OTP" });
 
     user.phoneOtp = undefined;
-    user.verified = !user.emailOtp; // Set verified if both verified
+    user.verified = !user.emailOtp;
     await user.save();
 
     res.json({ message: "Phone verified successfully" });
@@ -180,19 +213,23 @@ router.post("/verify-phone", async (req, res) => {
   }
 });
 
-// Login email OTP
+// ---------------------------
+// Request Login OTP (Email)
+// ---------------------------
 router.post("/request-login-otp", async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ message: "Email required" });
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "No account linked to this email" });
+    if (!user)
+      return res.status(400).json({ message: "No account linked to this email" });
 
     const code = makeCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
     user.emailOtp = { code, expiresAt };
     await user.save();
+
     console.log("🔐 Email Login OTP:", code);
 
     if (NODE_ENV !== "development") {
@@ -215,19 +252,22 @@ router.post("/request-login-otp", async (req, res) => {
   }
 });
 
-// Verify login email OTP
+// ---------------------------
+// Verify Login OTP (Email)
+// ---------------------------
 router.post("/verify-login-otp", async (req, res) => {
   try {
     const { email, code } = req.body;
-    if (!email || !code) return res.status(400).json({ message: "Email and OTP required" });
 
     const user = await User.findOne({ email });
-    if (!user || !user.emailOtp) return res.status(400).json({ message: "OTP not requested" });
+    if (!user || !user.emailOtp)
+      return res.status(400).json({ message: "OTP not requested" });
 
     if (!isOtpValid(user.emailOtp, code))
       return res.status(400).json({ message: "Invalid or expired OTP" });
 
     const token = generateToken(user);
+
     user.emailOtp = undefined;
     await user.save();
 
@@ -238,19 +278,23 @@ router.post("/verify-login-otp", async (req, res) => {
   }
 });
 
-// Login phone OTP
+// ---------------------------
+// Request Login OTP (Phone)
+// ---------------------------
 router.post("/request-login-otp-phone", async (req, res) => {
   try {
     const { phone } = req.body;
-    if (!phone) return res.status(400).json({ message: "Phone required" });
 
     const user = await User.findOne({ phone });
-    if (!user) return res.status(400).json({ message: "No account linked to this phone" });
+    if (!user)
+      return res.status(400).json({ message: "No account linked to this phone" });
 
     const code = makeCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
     user.phoneOtp = { code, expiresAt };
     await user.save();
+
     console.log("🔐 Phone Login OTP:", code);
 
     if (NODE_ENV !== "development") {
@@ -268,19 +312,22 @@ router.post("/request-login-otp-phone", async (req, res) => {
   }
 });
 
-// Verify login phone OTP
+// ---------------------------
+// Verify Login OTP (Phone)
+// ---------------------------
 router.post("/verify-login-otp-phone", async (req, res) => {
   try {
     const { phone, code } = req.body;
-    if (!phone || !code) return res.status(400).json({ message: "Phone and OTP required" });
 
     const user = await User.findOne({ phone });
-    if (!user || !user.phoneOtp) return res.status(400).json({ message: "OTP not requested" });
+    if (!user || !user.phoneOtp)
+      return res.status(400).json({ message: "OTP not requested" });
 
     if (!isOtpValid(user.phoneOtp, code))
       return res.status(400).json({ message: "Invalid or expired OTP" });
 
     const token = generateToken(user);
+
     user.phoneOtp = undefined;
     await user.save();
 
@@ -288,6 +335,28 @@ router.post("/verify-login-otp-phone", async (req, res) => {
   } catch (err) {
     console.error("VERIFY PHONE LOGIN OTP ERROR:", err);
     res.status(500).json({ message: "Server error verifying phone login OTP" });
+  }
+});
+
+// =======================
+// LOGOUT
+// =======================
+router.post("/logout", checkBlacklist, (req, res) => {
+  try {
+    const header = req.headers.authorization;
+    if (!header)
+      return res.status(400).json({ message: "No token provided" });
+
+    const token = header.split(" ")[1];
+    if (!token)
+      return res.status(400).json({ message: "No token provided" });
+
+    tokenBlacklist.add(token);
+
+    res.json({ message: "Logged out successfully" });
+  } catch (err) {
+    console.error("LOGOUT ERROR:", err);
+    res.status(500).json({ message: "Server error logging out" });
   }
 });
 
