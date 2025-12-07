@@ -3,6 +3,8 @@ import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import multer from "multer";
 import axios from "axios";
+import streamifier from "streamifier";
+import cloudinary from "../config/cloudinary.js"; // make sure this exists and exports configured v2
 import User from "../models/User.js";
 
 const router = express.Router();
@@ -73,6 +75,19 @@ const sendSms = async (recipient, content, sender = "SwiftMeta") => {
 };
 
 // =======================
+// Cloudinary upload helper
+// =======================
+function uploadToCloudinary(buffer, options = { folder: "swiftmeta_users" }) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
+      if (error) return reject(error);
+      resolve(result);
+    });
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
+}
+
+// =======================
 // JWT BLACKLIST FOR LOGOUT
 // =======================
 const tokenBlacklist = new Set();
@@ -112,7 +127,7 @@ router.get("/test-email", async (req, res) => {
 });
 
 // ---------------------------
-// Register
+// Register (with avatar upload)
 // ---------------------------
 router.post("/register", upload.single("avatar"), async (req, res) => {
   try {
@@ -124,6 +139,18 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
     if (exists)
       return res.status(400).json({ message: "Phone or email already registered" });
 
+    // Upload avatar if provided
+    let avatarUrl = undefined;
+    if (req.file && req.file.buffer) {
+      try {
+        const uploaded = await uploadToCloudinary(req.file.buffer, { folder: "swiftmeta_users", quality: "auto" });
+        avatarUrl = uploaded.secure_url;
+      } catch (uploadErr) {
+        console.error("CLOUDINARY UPLOAD ERROR:", uploadErr);
+        return res.status(500).json({ message: "Failed to upload avatar" });
+      }
+    }
+
     const emailCode = makeCode();
     const phoneCode = makeCode();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
@@ -132,6 +159,7 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
       phone,
       email,
       name,
+      avatar: avatarUrl,
       emailOtp: { code: emailCode, expiresAt },
       phoneOtp: { code: phoneCode, expiresAt },
       verified: false,
@@ -153,6 +181,7 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
 
     res.json({
       message: "Registered successfully",
+      avatar: avatarUrl,
       emailOtp: NODE_ENV === "development" ? emailCode : undefined,
       phoneOtp: NODE_ENV === "development" ? phoneCode : undefined,
       expiresAt,
