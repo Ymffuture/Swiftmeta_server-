@@ -4,7 +4,7 @@ import EmailToken from "../models/EmailToken.js";
 import VerifiedEmail from "../models/VerifiedEmail.js";
 import crypto from "crypto";
 import { sendMail } from "../utils/mailerquiz.js";
-
+import "dotenv/config";
 /* ===============================
    REQUEST EMAIL VERIFICATION
 ================================ */
