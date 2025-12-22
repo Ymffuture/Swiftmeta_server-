@@ -23,7 +23,7 @@ export const requestVerification = async (req, res) => {
       expiresAt: new Date(Date.now() + 10 * 60 * 1000)
     });
 
-    const verifyUrl = `${process.env.BASE_URL}/verify?token=${token}`;
+    const verifyUrl = `${process.env.FRONTEND_URL}/verify?token=${token}`;
 
     await sendMail({
       to: email,
@@ -139,7 +139,7 @@ export const submitQuiz = async (req, res) => {
 
     /* OPTIONAL: Send result email */
     await sendMail({
-      to: process.env.EMAIL_TO,
+      to: email,
       subject: "New Quiz Result",
       html: `
         <h2>New Quiz Submission</h2>
