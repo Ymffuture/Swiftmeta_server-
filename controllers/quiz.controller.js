@@ -1,4 +1,4 @@
-import quizzes from "../data/quizzes.json" assert { type: "json" };
+import quizzes from "../data/quizzes.json";
 import QuizAttempt from "../models/QuizAttempt.js";
 import EmailToken from "../models/EmailToken.js";
 import VerifiedEmail from "../models/VerifiedEmail.js";
