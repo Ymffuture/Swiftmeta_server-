@@ -10,6 +10,7 @@ import authRoutes from "./routes/auth.js";
 import postRoutes from "./routes/posts.js";
 import uploadRoutes from "./routes/uploads.js";
 import geminiRouter from "./routes/gemini.js";
+import quizRoutes from "./routes/quiz.routes.js";
 import users from "./routes/Users.js";
 
 const app = express();
@@ -39,6 +40,10 @@ app.use("/api/posts", postRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/gemini", geminiRouter);
 app.use("/api/users", users) ;
+app.use("/api/quiz", quizRoutes);
+
+
+
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
