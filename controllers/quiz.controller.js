@@ -3,7 +3,7 @@ import QuizAttempt from "../models/QuizAttempt.js";
 import EmailToken from "../models/EmailToken.js";
 import VerifiedEmail from "../models/VerifiedEmail.js";
 import crypto from "crypto";
-import { sendMail } from "../utils/mailer.js";
+import { sendMail } from "../utils/mailerquiz.js";
 
 /* ===============================
    REQUEST EMAIL VERIFICATION
