@@ -5,7 +5,7 @@ import multer from "multer";
 import streamifier from "streamifier";
 import cloudinary from "../config/cloudinary.js";
 import User from "../models/User.js";
-
+import "dotenv/config";
 const router = express.Router();
 const upload = multer();
 
