@@ -24,11 +24,6 @@ const EmailTokenSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
-/**
- * Automatically remove expired tokens
- * (MongoDB TTL index)
- */
 EmailTokenSchema.index(
   { expiresAt: 1 },
   { expireAfterSeconds: 0 }
