@@ -13,7 +13,7 @@ export async function sendOtpEmail(to, code) {
 
   try {
     const response = await resend.emails.send({
-      from: "OTP Login Request <onboarding@resend.dev>",,
+      from: "OTP Login Request <onboarding@resend.dev>",
       to,
       subject: "SwiftMeta — Your OTP Code",
       html: `
