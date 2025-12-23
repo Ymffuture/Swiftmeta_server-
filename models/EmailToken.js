@@ -1,10 +1,37 @@
 import mongoose from "mongoose";
 
-export default mongoose.model(
-  "EmailToken",
-  new mongoose.Schema({
-    email: String,
-    token: String,
-    expiresAt: Date
-  })
+const EmailTokenSchema = new mongoose.Schema(
+  {
+    email: {
+      type: String,
+      required: true,
+      lowercase: true,
+      trim: true,
+      index: true,
+    },
+
+    token: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+
+    expiresAt: {
+      type: Date,
+      required: true,
+      index: true,
+    },
+  },
+  { timestamps: true }
 );
+
+/**
+ * Automatically remove expired tokens
+ * (MongoDB TTL index)
+ */
+EmailTokenSchema.index(
+  { expiresAt: 1 },
+  { expireAfterSeconds: 0 }
+);
+
+export default mongoose.model("EmailToken", EmailTokenSchema);
