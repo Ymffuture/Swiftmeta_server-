@@ -26,22 +26,69 @@ export const requestVerification = async (req, res) => {
     const verifyUrl = `${process.env.FRONTEND_URL}/verify?token=${token}`;
 
     await sendMail({
-      to: email,
-      subject: "Verify your email",
-      html: `
-        <h2>Email Verification</h2>
-        <p>Click the button below to verify your email:</p>
-        <a href="${verifyUrl}" style="
-          padding:12px 20px;
-          background:#111;
-          color:#fff;
-          border-radius:8px;
-          text-decoration:none;
-          display:inline-block;
-        ">Verify Email</a>
-        <p>This link expires in 10 minutes.</p>
-      `
-    });
+  to: email,
+  subject: "Confirm your email address",
+  html: `
+  <div style="
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: #111827;
+    line-height: 1.6;
+  ">
+
+    <h2 style="margin-bottom: 12px;">Verify your email address</h2>
+
+    <p>
+      Thanks for starting the coding assessment.
+      Please confirm your email address to continue.
+    </p>
+
+    <div style="margin: 24px 0;">
+      <a href="${verifyUrl}"
+        style="
+          display: inline-block;
+          padding: 12px 18px;
+          background-color: #111827;
+          color: #ffffff;
+          text-decoration: none;
+          border-radius: 6px;
+          font-weight: 500;
+        ">
+        Verify Email
+      </a>
+    </div>
+
+    <p style="font-size: 14px; color: #4b5563;">
+      If the button doesn’t work, copy and paste this link into your browser:
+    </p>
+
+    <p style="
+      font-size: 13px;
+      background: #f3f4f6;
+      padding: 12px;
+      border-radius: 6px;
+      word-break: break-all;
+    ">
+      ${verifyUrl}
+    </p>
+
+    <p style="font-size: 13px; color: #6b7280;">
+      This link expires in <strong>10 minutes</strong>.
+      If you didn’t request this email, you can safely ignore it.
+    </p>
+
+    <hr style="margin: 32px 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+    <p style="font-size: 12px; color: #9ca3af;">
+      Sent by Quiz System · Please do not reply to this email
+    </p>
+
+  </div>
+  `
+});
+
 
     res.json({ message: "Verification email sent" });
   } catch (err) {
