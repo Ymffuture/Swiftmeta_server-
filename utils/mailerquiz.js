@@ -10,7 +10,7 @@ export const sendMail = async ({ to, subject, html }) => {
 
   try {
     const data = await resend.emails.send({
-      from: "Quiz System <onboarding@resend.dev>", // ✅ REQUIRED
+      from: "SwiftMeta Quiz System <onboarding@resend.dev>", // ✅ REQUIRED
       to,
       subject,
       html,
