@@ -1,8 +1,23 @@
 import mongoose from "mongoose";
 
-export default mongoose.model(
-  "VerifiedEmail",
-  new mongoose.Schema({
-    email: { type: String, unique: true }
-  })
+const VerifiedEmailSchema = new mongoose.Schema(
+  {
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+      index: true,
+    },
+
+    verifiedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { timestamps: true }
 );
+
+export default mongoose.model("VerifiedEmail", VerifiedEmailSchema);
+
