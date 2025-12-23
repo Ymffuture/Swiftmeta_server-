@@ -10,12 +10,13 @@ export const sendMail = async ({ to, subject, html }) => {
 
   try {
     const data = await resend.emails.send({
-      from: "Quiz System <famacloud.ai@gmail.com>",
+      from: "Quiz System <onboarding@resend.dev>", // ✅ REQUIRED
       to,
       subject,
       html,
     });
 
+    console.log("✅ Email sent:", data.id);
     return data;
   } catch (err) {
     console.error("❌ Email send failed:", err);
