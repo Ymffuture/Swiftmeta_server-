@@ -10,7 +10,7 @@ export const sendMail = async ({ to, subject, html }) => {
 
   try {
     const data = await resend.emails.send({
-      from: "Quiz System <no-reply@yourdomain.com>",
+      from: "Quiz System <famacloud.ai@gmail.com>",
       to,
       subject,
       html,
