@@ -1,38 +1,25 @@
 import express from "express";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer";
 import multer from "multer";
 import streamifier from "streamifier";
 import cloudinary from "../config/cloudinary.js";
 import User from "../models/User.js";
+import { sendOtpEmail } from "../utils/mailer.js";
 import "dotenv/config";
+
 const router = express.Router();
 const upload = multer();
 
 const NODE_ENV = process.env.NODE_ENV || "development";
-const EMAIL_USER = process.env.EMAIL_USER;
-const EMAIL_PASS = process.env.EMAIL_PASS; // Gmail App Password
 const JWT_SECRET = process.env.JWT_SECRET;
 
-if (!EMAIL_USER || !EMAIL_PASS || !JWT_SECRET) {
-  console.warn("⚠️ Missing environment variables");
+if (!JWT_SECRET) {
+  console.warn("⚠️ Missing JWT_SECRET");
 }
 
-// Gmail Transporter
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: { user: EMAIL_USER, pass: EMAIL_PASS },
-  pool: true,
-  maxConnections: 5,
-  maxMessages: 200,
-});
-
-transporter.verify((err) => {
-  if (err) console.error("❌ Gmail SMTP verify failed:", err.message);
-  else console.log("✅ Gmail SMTP ready");
-});
-
-// Helpers
+/* =====================
+   HELPERS
+===================== */
 const makeCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 const isOtpValid = (otpObj, code) =>
@@ -45,51 +32,22 @@ const generateToken = (user) =>
     { expiresIn: "30d" }
   );
 
-// Cloudinary upload helper
+/* =====================
+   CLOUDINARY
+===================== */
 function uploadToCloudinary(buffer, options = { folder: "swiftmeta_users" }) {
   return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
-      if (error) return reject(error);
-      resolve(result);
+    const stream = cloudinary.uploader.upload_stream(options, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
     });
     streamifier.createReadStream(buffer).pipe(stream);
   });
 }
 
-// JWT Blacklist
-const tokenBlacklist = new Set();
-
-function checkBlacklist(req, res, next) {
-  const header = req.headers.authorization;
-  if (!header) return res.status(401).json({ message: "No token provided" });
-
-  const token = header.split(" ")[1];
-  if (!token) return res.status(401).json({ message: "No token provided" });
-
-  if (tokenBlacklist.has(token))
-    return res.status(401).json({ message: "Token has been logged out" });
-
-  next();
-}
-
-// Routes
-
-// Test email
-router.get("/test-email", async (req, res) => {
-  try {
-    const info = await transporter.sendMail({
-      from: `"SwiftMeta Test" <${EMAIL_USER}>`,
-      to: EMAIL_USER,
-      subject: "Gmail SMTP Test",
-      text: `Test successful at ${new Date().toISOString()}`,
-    });
-    res.json({ ok: true, response: info.response });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-// Register
+/* =====================
+   REGISTER
+===================== */
 router.post("/register", upload.single("avatar"), async (req, res) => {
   try {
     const { phone, email, name } = req.body;
@@ -98,229 +56,111 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
 
     const exists = await User.findOne({ $or: [{ phone }, { email }] });
     if (exists)
-      return res.status(400).json({ message: "Phone or email already registered" });
+      return res.status(400).json({ message: "Already registered" });
 
-    let avatarUrl = undefined;
-    if (req.file && req.file.buffer) {
-      try {
-        const uploaded = await uploadToCloudinary(req.file.buffer, {
-          folder: "swiftmeta_users",
-          quality: "auto",
-        });
-        avatarUrl = uploaded.secure_url;
-      } catch (uploadErr) {
-        console.error("CLOUDINARY UPLOAD ERROR:", uploadErr);
-        return res.status(500).json({ message: "Failed to upload avatar" });
-      }
+    let avatar;
+    if (req.file?.buffer) {
+      const uploaded = await uploadToCloudinary(req.file.buffer);
+      avatar = uploaded.secure_url;
     }
 
     const emailCode = makeCode();
     const phoneCode = makeCode();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    const user = new User({
+    const user = await User.create({
       phone,
       email,
       name,
-      avatar: avatarUrl,
+      avatar,
       emailOtp: { code: emailCode, expiresAt },
       phoneOtp: { code: phoneCode, expiresAt },
       verified: false,
     });
 
-    await user.save();
-    console.log("📩 Email OTP:", emailCode);
-    console.log("📱 Phone OTP:", phoneCode);
-
     if (NODE_ENV !== "development") {
-      await transporter.sendMail({
-        from: `"SwiftMeta" <${EMAIL_USER}>`,
+      await sendOtpEmail({
         to: email,
-        subject: "Account verification",
-        text: `Your email verification code is: ${emailCode}`,
+        subject: "Verify your SwiftMeta account",
+        code: emailCode,
+        expiresMinutes: 15,
       });
-      // Phone OTP only logged (no SMS)
     }
 
     res.json({
       message: "Registered successfully",
-      avatar: avatarUrl,
       emailOtp: NODE_ENV === "development" ? emailCode : undefined,
       phoneOtp: NODE_ENV === "development" ? phoneCode : undefined,
       expiresAt,
     });
   } catch (err) {
     console.error("REGISTER ERROR:", err);
-    res.status(500).json({ message: "Server error while registering" });
+    res.status(500).json({ message: "Registration failed" });
   }
 });
 
-// Verify Email
+/* =====================
+   VERIFY EMAIL
+===================== */
 router.post("/verify-email", async (req, res) => {
-  try {
-    const { email, code } = req.body;
-    const user = await User.findOne({ email });
-    if (!user || !user.emailOtp)
-      return res.status(400).json({ message: "User not found or OTP not requested" });
+  const { email, code } = req.body;
 
-    if (!isOtpValid(user.emailOtp, code))
-      return res.status(400).json({ message: "Invalid or expired OTP" });
+  const user = await User.findOne({ email });
+  if (!user || !isOtpValid(user.emailOtp, code))
+    return res.status(400).json({ message: "Invalid or expired OTP" });
 
-    user.emailOtp = undefined;
-    user.verified = !user.phoneOtp;
-    await user.save();
+  user.emailOtp = undefined;
+  user.verified = !user.phoneOtp;
+  await user.save();
 
-    res.json({ message: "Email verified successfully" });
-  } catch (err) {
-    console.error("VERIFY EMAIL ERROR:", err);
-    res.status(500).json({ message: "Server error verifying email" });
-  }
+  res.json({ message: "Email verified" });
 });
 
-// Verify Phone
-router.post("/verify-phone", async (req, res) => {
-  try {
-    const { phone, code } = req.body;
-    const user = await User.findOne({ phone });
-    if (!user || !user.phoneOtp)
-      return res.status(400).json({ message: "User not found or OTP not requested" });
-
-    if (!isOtpValid(user.phoneOtp, code))
-      return res.status(400).json({ message: "Invalid or expired OTP" });
-
-    user.phoneOtp = undefined;
-    user.verified = !user.emailOtp;
-    await user.save();
-
-    res.json({ message: "Phone verified successfully" });
-  } catch (err) {
-    console.error("VERIFY PHONE ERROR:", err);
-    res.status(500).json({ message: "Server error verifying phone" });
-  }
-});
-
-// Request Login OTP (Email)
+/* =====================
+   REQUEST LOGIN OTP
+===================== */
 router.post("/request-login-otp", async (req, res) => {
-  try {
-    const { email } = req.body;
-    const user = await User.findOne({ email });
-    if (!user)
-      return res.status(400).json({ message: "No account linked to this email" });
+  const { email } = req.body;
+  const user = await User.findOne({ email });
+  if (!user) return res.status(400).json({ message: "User not found" });
 
-    const code = makeCode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  const code = makeCode();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    user.emailOtp = { code, expiresAt };
-    await user.save();
+  user.emailOtp = { code, expiresAt };
+  await user.save();
 
-    console.log("🔐 Email Login OTP:", code);
-
-    if (NODE_ENV !== "development") {
-      await transporter.sendMail({
-        from: `"SwiftMeta Auth" <${EMAIL_USER}>`,
-        to: email,
-        subject: "Login code",
-        text: `Your login code is: ${code}. It expires in 10 minutes.`,
-      });
-    }
-
-    res.json({
-      message: "OTP sent",
-      otp: NODE_ENV === "development" ? code : undefined,
-      expiresAt,
+  if (NODE_ENV !== "development") {
+    await sendOtpEmail({
+      to: email,
+      subject: "Your SwiftMeta login code",
+      code,
+      expiresMinutes: 10,
     });
-  } catch (err) {
-    console.error("REQUEST LOGIN OTP ERROR:", err);
-    res.status(500).json({ message: "Server error requesting login OTP" });
   }
+
+  res.json({
+    message: "OTP sent",
+    otp: NODE_ENV === "development" ? code : undefined,
+    expiresAt,
+  });
 });
 
-// Verify Login OTP (Email)
+/* =====================
+   VERIFY LOGIN OTP
+===================== */
 router.post("/verify-login-otp", async (req, res) => {
-  try {
-    const { email, code } = req.body;
-    const user = await User.findOne({ email });
-    if (!user || !user.emailOtp)
-      return res.status(400).json({ message: "OTP not requested" });
+  const { email, code } = req.body;
+  const user = await User.findOne({ email });
 
-    if (!isOtpValid(user.emailOtp, code))
-      return res.status(400).json({ message: "Invalid or expired OTP" });
+  if (!user || !isOtpValid(user.emailOtp, code))
+    return res.status(400).json({ message: "Invalid OTP" });
 
-    const token = generateToken(user);
-    user.emailOtp = undefined;
-    await user.save();
+  const token = generateToken(user);
+  user.emailOtp = undefined;
+  await user.save();
 
-    res.json({ message: "Login successful", token, user });
-  } catch (err) {
-    console.error("VERIFY LOGIN OTP ERROR:", err);
-    res.status(500).json({ message: "Server error verifying login OTP" });
-  }
-});
-
-// Request Login OTP (Phone) - no SMS, only dev log
-router.post("/request-login-otp-phone", async (req, res) => {
-  try {
-    const { phone } = req.body;
-    const user = await User.findOne({ phone });
-    if (!user)
-      return res.status(400).json({ message: "No account linked to this phone" });
-
-    const code = makeCode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-    user.phoneOtp = { code, expiresAt };
-    await user.save();
-
-    console.log("🔐 Phone Login OTP:", code);
-
-    res.json({
-      message: "OTP generated (check server log in dev)",
-      otp: NODE_ENV === "development" ? code : undefined,
-      expiresAt,
-    });
-  } catch (err) {
-    console.error("REQUEST PHONE LOGIN OTP ERROR:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// Verify Login OTP (Phone)
-router.post("/verify-login-otp-phone", async (req, res) => {
-  try {
-    const { phone, code } = req.body;
-    const user = await User.findOne({ phone });
-    if (!user || !user.phoneOtp)
-      return res.status(400).json({ message: "OTP not requested" });
-
-    if (!isOtpValid(user.phoneOtp, code))
-      return res.status(400).json({ message: "Invalid or expired OTP" });
-
-    const token = generateToken(user);
-    user.phoneOtp = undefined;
-    await user.save();
-
-    res.json({ message: "Login successful", token, user });
-  } catch (err) {
-    console.error("VERIFY PHONE LOGIN OTP ERROR:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// Logout
-router.post("/logout", checkBlacklist, (req, res) => {
-  try {
-    const header = req.headers.authorization;
-    if (!header) return res.status(400).json({ message: "No token provided" });
-
-    const token = header.split(" ")[1];
-    if (!token) return res.status(400).json({ message: "No token provided" });
-
-    tokenBlacklist.add(token);
-    res.json({ message: "Logged out successfully" });
-  } catch (err) {
-    console.error("LOGOUT ERROR:", err);
-    res.status(500).json({ message: "Server error logging out" });
-  }
+  res.json({ token, user });
 });
 
 export default router;
