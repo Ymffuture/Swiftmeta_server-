@@ -47,4 +47,46 @@ router.get("/", async (req, res) => {
   }
 });
 
+
+// routes/contact.js
+router.patch("/:id/status", async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    if (!["pending", "approved"].includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
+    const contact = await Contact.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+
+    if (!contact) {
+      return res.status(404).json({ error: "Contact not found" });
+    }
+
+    res.json(contact);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+   // DELETE /api/contact/:id
+router.delete("/:id", async (req, res) => {
+  try {
+    const deleted = await Contact.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: "Contact not found" });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
 export default router;
