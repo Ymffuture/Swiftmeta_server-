@@ -13,6 +13,7 @@ import geminiRouter from "./routes/gemini.js";
 import quizRoutes from "./routes/quiz.routes.js";
 import users from "./routes/Users.js";
 import contactRoutes from "./routes/contact.routes.js";
+import ticketRoutes from "./routes/ticket.routes.js";
 
 dotenv.config();
 
@@ -45,7 +46,7 @@ app.use("/api/gemini", geminiRouter);
 app.use("/api/users", users) ;
 app.use("/api/quiz", quizRoutes);
 app.use("/api/contact", contactRoutes);
-
+app.use("/api/tickets", ticketRoutes);
 
 mongoose
   .connect(process.env.MONGO_URI)
