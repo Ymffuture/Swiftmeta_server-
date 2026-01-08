@@ -12,6 +12,9 @@ import uploadRoutes from "./routes/uploads.js";
 import geminiRouter from "./routes/gemini.js";
 import quizRoutes from "./routes/quiz.routes.js";
 import users from "./routes/Users.js";
+import contactRoutes from "./routes/contact.routes.js";
+
+dotenv.config();
 
 const app = express();
 app.use(cors({
@@ -41,7 +44,7 @@ app.use("/api/uploads", uploadRoutes);
 app.use("/api/gemini", geminiRouter);
 app.use("/api/users", users) ;
 app.use("/api/quiz", quizRoutes);
-
+app.use("/api/contact", contactRoutes);
 
 
 mongoose
