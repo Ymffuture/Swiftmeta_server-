@@ -1,12 +1,13 @@
 import express from "express";
 import Contact from "../models/Contact.js";
+import { contactRateLimit } from "../middleware/rateLimit.js";
 
 const router = express.Router();
 
-/* -----------------------------
-   POST: Save contact message
------------------------------- */
-router.post("/", async (req, res) => {
+/* ----------------------------------
+   POST /contact
+----------------------------------- */
+router.post("/", contactRateLimit, async (req, res) => {
   try {
     const { name, email, subject, message } = req.body;
 
@@ -26,24 +27,37 @@ router.post("/", async (req, res) => {
       data: contact,
     });
   } catch (err) {
-    console.error("Contact POST error:", err);
+    console.error("CONTACT POST ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-/* -----------------------------
-   GET: Contact history (names)
------------------------------- */
+/* ----------------------------------
+   GET /contact?page=1&limit=5
+----------------------------------- */
 router.get("/", async (req, res) => {
   try {
-    const contacts = await Contact.find()
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .select("name createdAt");
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 5, 20);
+    const skip = (page - 1) * limit;
 
-    res.json(contacts);
+    const [contacts, total] = await Promise.all([
+      Contact.find()
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .select("name subject createdAt"),
+      Contact.countDocuments(),
+    ]);
+
+    res.json({
+      data: contacts,
+      page,
+      totalPages: Math.ceil(total / limit),
+      total,
+    });
   } catch (err) {
-    console.error("Contact GET error:", err);
+    console.error("CONTACT GET ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
