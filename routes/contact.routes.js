@@ -15,7 +15,9 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Name, email, and message are required." });
     }
 
+    // Save with default status 'pending'
     const newContact = await Contact.create({ name, email, subject, message });
+
     res.status(201).json(newContact);
   } catch (err) {
     console.error(err);
