@@ -3,12 +3,25 @@ import {
   createTicket,
   getTicketById,
   replyToTicket,
-} from "../controllers/ticket.controller.js";
+  getAllTickets,
+  closeTicket,
+} from "../controllers/ticketController.js";
 
 const router = express.Router();
 
+/* Create */
 router.post("/", createTicket);
+
+/* Admin: list all */
+router.get("/", getAllTickets);
+
+/* Get single */
 router.get("/:id", getTicketById);
+
+/* Reply */
 router.post("/:id/reply", replyToTicket);
+
+/* Close */
+router.patch("/:id/close", closeTicket);
 
 export default router;
