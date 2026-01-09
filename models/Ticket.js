@@ -7,21 +7,14 @@ const MessageSchema = new mongoose.Schema(
       enum: ["user", "admin"],
       required: true,
     },
-    message: {
-      type: String,
-      required: true,
-    },
+    message: String,
   },
   { timestamps: true }
 );
 
 const TicketSchema = new mongoose.Schema(
   {
-    ticketId: {
-      type: String,
-      unique: true,
-      index: true,
-    },
+    ticketId: { type: String, unique: true },
     email: String,
     subject: String,
     status: {
@@ -29,9 +22,15 @@ const TicketSchema = new mongoose.Schema(
       enum: ["open", "pending", "closed"],
       default: "open",
     },
+    lastReplyBy: {
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+    },
     messages: [MessageSchema],
   },
   { timestamps: true }
 );
 
 export default mongoose.model("Ticket", TicketSchema);
+
