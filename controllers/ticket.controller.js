@@ -9,15 +9,13 @@ export const createTicket = async (req, res) => {
     const { email, subject, message } = req.body;
 
     if (!email || !message) {
-      return res
-        .status(400)
-        .json({ error: "Email and message are required" });
+      return res.status(400).json({ error: "Email and message are required" });
     }
 
     const ticket = await Ticket.create({
       ticketId: generateTicketId(),
       email,
-      subject,
+      subject: subject || "No subject",
       status: "open",
       lastReplyBy: "user",
       messages: [{ sender: "user", message }],
@@ -25,6 +23,7 @@ export const createTicket = async (req, res) => {
 
     res.status(201).json(ticket);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Failed to create ticket" });
   }
 };
@@ -34,16 +33,13 @@ export const createTicket = async (req, res) => {
 ---------------------------------- */
 export const getTicketById = async (req, res) => {
   try {
-    const ticket = await Ticket.findOne({
-      ticketId: req.params.id,
-    });
+    const ticket = await Ticket.findOne({ ticketId: req.params.id });
 
-    if (!ticket) {
-      return res.status(404).json({ error: "Ticket not found" });
-    }
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
 
     res.json(ticket);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -63,28 +59,21 @@ export const replyToTicket = async (req, res) => {
       return res.status(400).json({ error: "Invalid sender" });
     }
 
-    const ticket = await Ticket.findOne({
-      ticketId: req.params.id,
-    });
-
-    if (!ticket) {
-      return res.status(404).json({ error: "Ticket not found" });
-    }
+    const ticket = await Ticket.findOne({ ticketId: req.params.id });
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
 
     if (ticket.status === "closed") {
-      return res
-        .status(400)
-        .json({ error: "Ticket is closed" });
+      return res.status(400).json({ error: "Ticket is closed" });
     }
 
     ticket.messages.push({ sender, message });
     ticket.lastReplyBy = sender;
-    ticket.status = sender === "admin" ? "pending" : "open";
+    ticket.status = sender === "admin" ? "open" : "pending"; // Admin reply marks ticket open
 
     await ticket.save();
-
     res.json(ticket);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Failed to reply" });
   }
 };
@@ -96,10 +85,11 @@ export const getAllTickets = async (_req, res) => {
   try {
     const tickets = await Ticket.find()
       .sort({ updatedAt: -1 })
-      .select("-messages");
+      .select("-messages"); // exclude messages for list view
 
     res.json(tickets);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Failed to fetch tickets" });
   }
 };
@@ -109,18 +99,15 @@ export const getAllTickets = async (_req, res) => {
 ---------------------------------- */
 export const closeTicket = async (req, res) => {
   try {
-    const ticket = await Ticket.findOneAndUpdate(
-      { ticketId: req.params.id },
-      { status: "closed" },
-      { new: true }
-    );
+    const ticket = await Ticket.findOne({ ticketId: req.params.id });
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
 
-    if (!ticket) {
-      return res.status(404).json({ error: "Ticket not found" });
-    }
+    ticket.status = "closed";
+    await ticket.save();
 
     res.json(ticket);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Failed to close ticket" });
   }
 };
