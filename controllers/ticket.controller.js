@@ -124,9 +124,17 @@ export const getAllTickets = async (_req, res) => {
 export const closeTicket = async (req, res) => {
   try {
     const ticket = await Ticket.findOne({ ticketId: req.params.id });
-    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+
+    if (!ticket) {
+      return res.status(404).json({ error: "Ticket not found" });
+    }
+
+    if (ticket.status === "closed") {
+      return res.json(ticket); // idempotent
+    }
 
     ticket.status = "closed";
+    ticket.lastReplyBy = "admin"; // ✅ FIX
     await ticket.save();
 
     res.json(ticket);
@@ -135,3 +143,4 @@ export const closeTicket = async (req, res) => {
     res.status(500).json({ error: "Failed to close ticket" });
   }
 };
+
