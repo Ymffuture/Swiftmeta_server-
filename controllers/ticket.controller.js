@@ -1,5 +1,6 @@
 import Ticket from "../models/Ticket.js";
 import { generateTicketId } from "../utils/generateTicketId.js";
+import { sendTicketEmail } from "../utils/sendTicketEmail.js";
 
 /* ---------------------------------
    Create Ticket
@@ -12,13 +13,25 @@ export const createTicket = async (req, res) => {
       return res.status(400).json({ error: "Email and message are required" });
     }
 
+    const ticketId = generateTicketId();
+
     const ticket = await Ticket.create({
-      ticketId: generateTicketId(),
+      ticketId,
       email,
       subject: subject || "No subject",
       status: "open",
       lastReplyBy: "user",
       messages: [{ sender: "user", message }],
+    });
+
+    // 🔔 Send ticket ID via email (non-blocking UX)
+    sendTicketEmail({
+      to_email: email,
+      ticket_id: ticketId,
+      subject: ticket.subject,
+      message: "Your support ticket has been created successfully.",
+    }).catch((err) => {
+      console.error("Email failed:", err.message);
     });
 
     res.status(201).json(ticket);
@@ -27,6 +40,7 @@ export const createTicket = async (req, res) => {
     res.status(500).json({ error: "Failed to create ticket" });
   }
 };
+
 
 /* ---------------------------------
    Get Ticket by ID
