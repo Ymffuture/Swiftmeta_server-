@@ -73,6 +73,7 @@ export const replyToTicket = async (req, res) => {
       return res.status(400).json({ error: "Invalid sender" });
     }
 
+
     const ticket = await Ticket.findOne({ ticketId: req.params.id });
     if (!ticket) return res.status(404).json({ error: "Ticket not found" });
 
@@ -84,6 +85,15 @@ export const replyToTicket = async (req, res) => {
     ticket.lastReplyBy = sender;
     ticket.status = sender === "admin" ? "open" : "pending"; // Admin reply marks ticket open
 
+     if (sender === "admin") {
+  sendTicketEmail({
+    to_email: ticket.email,
+    ticket_id: ticket.ticketId,
+    subject: "Ticket Reply",
+    message: "An admin has replied to your ticket.",
+  }).catch(console.error);
+     }
+     
     await ticket.save();
     res.json(ticket);
   } catch (err) {
