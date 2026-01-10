@@ -1,8 +1,5 @@
 import mongoose from "mongoose";
 
-/* -----------------------------
-   Message Schema
------------------------------- */
 const MessageSchema = new mongoose.Schema(
   {
     sender: {
@@ -13,59 +10,44 @@ const MessageSchema = new mongoose.Schema(
     message: {
       type: String,
       required: true,
-      trim: true,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
     },
   },
-  { timestamps: true }
+  { _id: false }
 );
 
-/* -----------------------------
-   Ticket Schema
------------------------------- */
 const TicketSchema = new mongoose.Schema(
   {
     ticketId: {
       type: String,
       unique: true,
-      index: true,
       required: true,
     },
-
     email: {
       type: String,
       required: true,
-      lowercase: true,
-      trim: true,
-      index: true,
     },
-
     subject: {
       type: String,
-      required: true,
-      trim: true,
+      default: "No subject",
     },
-
     status: {
       type: String,
       enum: ["open", "pending", "closed"],
       default: "open",
-      index: true,
     },
-
     lastReplyBy: {
       type: String,
       enum: ["user", "admin"],
       default: "user",
-      index: true,
     },
-
-    messages: {
-      type: [MessageSchema],
-      default: [],
-    },
+    messages: [MessageSchema],
   },
   {
-    timestamps: true,
+    timestamps: true, // ✅ REQUIRED
   }
 );
 
