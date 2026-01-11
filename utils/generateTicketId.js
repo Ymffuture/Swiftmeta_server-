@@ -10,5 +10,5 @@ const partMixedShort = customAlphabet(ALPHANUM, 3);
 const partMixedLong = customAlphabet(ALPHANUM, 4);
 
 export const generateTicketId = () => {
-  return `${partLetters()}-${partMixedShort()}-${partMixedLong()}`;
+  return `${partLetters()}-${partMixedShort()}${partMixedLong()}`;
 };
