@@ -60,23 +60,35 @@ export const replyToTicket = async (req, res) => {
     }
 
     const ticket = await Ticket.findOne({ ticketId: req.params.id });
-    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+    if (!ticket) {
+      return res.status(404).json({ error: "Ticket not found" });
+    }
 
+    // 🚫 HARD RULE: Closed tickets never auto-reopen
     if (ticket.status === "closed") {
-      return res.status(400).json({ error: "Ticket is closed" });
+      return res.status(403).json({
+        error: "This ticket is closed and cannot receive new replies",
+      });
     }
 
     ticket.messages.push({ sender, message });
     ticket.lastReplyBy = sender;
-    ticket.status = sender === "admin" ? "open" : "pending"; // Admin reply marks ticket open
+
+    // ✅ SAFE status logic
+    if (sender === "user") {
+      ticket.status = "pending";
+    } else if (sender === "admin") {
+      ticket.status = "open";
+    }
 
     await ticket.save();
     res.json(ticket);
   } catch (err) {
-    console.error(err);
+    console.error("Reply error:", err);
     res.status(500).json({ error: "Failed to reply" });
   }
 };
+
 
 /* ---------------------------------
    Get All Tickets (Admin)
@@ -102,20 +114,28 @@ export const closeTicket = async (req, res) => {
   try {
     const { ticketId } = req.params;
 
-    const ticket = await Ticket.findOneAndUpdate(
-      { ticketId },
-      { status: "closed" },
-      { new: true }
-    );
-
+    const ticket = await Ticket.findOne({ ticketId });
     if (!ticket) {
       return res.status(404).json({ error: "Ticket not found" });
     }
 
+    if (ticket.status === "closed") {
+      return res.json(ticket); // idempotent
+    }
+
+    ticket.status = "closed";
+    ticket.lastReplyBy = "admin";
+
+    ticket.messages.push({
+      sender: "system",
+      message: "Ticket closed by support.",
+      createdAt: new Date(),
+    });
+
+    await ticket.save();
     res.json(ticket);
   } catch (err) {
     console.error("Close ticket error:", err);
     res.status(500).json({ error: "Failed to close ticket" });
   }
 };
-
