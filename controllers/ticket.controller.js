@@ -102,6 +102,10 @@ export const closeTicket = async (req, res) => {
     const ticket = await Ticket.findOne({ ticketId: req.params.id });
     if (!ticket) return res.status(404).json({ error: "Ticket not found" });
 
+    if (ticket.status === "closed") {
+      return res.status(400).json({ error: "Ticket is already closed" });
+    }
+
     ticket.status = "closed";
     await ticket.save();
 
