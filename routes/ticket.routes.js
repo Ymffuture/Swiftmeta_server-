@@ -22,6 +22,6 @@ router.get("/:id", getTicketById);
 router.post("/:id/reply", replyToTicket);
 
 /* Close */
-router.put("/:id/close", closeTicket);
+router.patch("/:id/close", closeTicket);
 
 export default router;
