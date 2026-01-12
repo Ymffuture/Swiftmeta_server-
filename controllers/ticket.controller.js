@@ -110,12 +110,16 @@ export const getAllTickets = async (_req, res) => {
    Close Ticket
 ---------------------------------- */
 // PATCH /api/tickets/:ticketId/close
+/* ---------------------------------
+   Close Ticket
+---------------------------------- */
+// PATCH /api/tickets/:id/close  // Update comment for consistency
 export const closeTicket = async (req, res) => {
   try {
-    const { ticketId } = req.params;
+    const ticketId = req.params.id;  // Changed from destructuring { ticketId } to req.params.id
 
     const ticket = await Ticket.findOneAndUpdate(
-      { ticketId, status: { $ne: "closed" } },
+      { ticketId, status: { $ne: "closed" } },  // ticketId here is the variable (the value from params)
       {
         $set: {
           status: "closed",
