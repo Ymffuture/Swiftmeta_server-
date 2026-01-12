@@ -109,29 +109,43 @@ export const getAllTickets = async (_req, res) => {
 /* ---------------------------------
    Close Ticket
 ---------------------------------- */
-// PATCH /api/tickets/:ticketId/close
+
 /* ---------------------------------
-   Close Ticket
+   Update Ticket Status (Admin)
 ---------------------------------- */
-// PATCH /api/tickets/:id/close  // Update comment for consistency
+// PUT /api/tickets/:ticketId/status
 export const closeTicket = async (req, res) => {
   try {
-    const ticketId = req.params.id;  // Changed from destructuring { ticketId } to req.params.id
+    const { ticketId } = req.params;
+    const { status } = req.body;
+
+    const allowedStatuses = ["open", "pending", "closed"];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        error: "Invalid status. Allowed: open, pending, closed",
+      });
+    }
+
+    // Build update object safely
+    const update = {
+      status,
+      lastReplyBy: "system",
+    };
+
+    // Add system message only when closing
+    if (status === "closed") {
+      update.$push = {
+        messages: {
+          sender: "system",
+          message: "Ticket closed by admin.",
+        },
+      };
+    }
 
     const ticket = await Ticket.findOneAndUpdate(
-      { ticketId, status: { $ne: "closed" } },  // ticketId here is the variable (the value from params)
-      {
-        $set: {
-          status: "closed",
-          lastReplyBy: "system",
-        },
-        $push: {
-          messages: {
-            sender: "system",
-            message: "Ticket closed by support.",
-          },
-        },
-      },
+      { ticketId },
+      update,
       {
         new: true,
         runValidators: true,
@@ -139,14 +153,18 @@ export const closeTicket = async (req, res) => {
     );
 
     if (!ticket) {
-      return res.status(404).json({
-        error: "Ticket not found or already closed",
-      });
+      return res.status(404).json({ error: "Ticket not found" });
     }
 
-    res.json(ticket);
+    res.json({
+      message: "Ticket status updated successfully",
+      ticket,
+    });
   } catch (err) {
-    console.error("Close ticket error:", err);
-    res.status(500).json({ error: "Failed to close ticket" });
+    console.error("Status update error:", err);
+    res.status(500).json({
+      error: "Failed to update ticket status",
+    });
   }
 };
+
