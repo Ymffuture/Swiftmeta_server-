@@ -97,21 +97,25 @@ export const getAllTickets = async (_req, res) => {
 /* ---------------------------------
    Close Ticket
 ---------------------------------- */
+// PATCH /api/tickets/:ticketId/close
 export const closeTicket = async (req, res) => {
   try {
-    const ticket = await Ticket.findOne({ ticketId: req.params.id });
-    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+    const { ticketId } = req.params;
 
-    if (ticket.status === "closed") {
-      return res.status(400).json({ error: "Ticket is already closed" });
+    const ticket = await Ticket.findOneAndUpdate(
+      { ticketId },
+      { status: "closed" },
+      { new: true }
+    );
+
+    if (!ticket) {
+      return res.status(404).json({ error: "Ticket not found" });
     }
-
-    ticket.status = "closed";
-    await ticket.save();
 
     res.json(ticket);
   } catch (err) {
-    console.error(err);
+    console.error("Close ticket error:", err);
     res.status(500).json({ error: "Failed to close ticket" });
   }
 };
+
