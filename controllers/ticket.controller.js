@@ -114,25 +114,32 @@ export const closeTicket = async (req, res) => {
   try {
     const { ticketId } = req.params;
 
-    const ticket = await Ticket.findOne({ ticketId });
+    const ticket = await Ticket.findOneAndUpdate(
+      { ticketId, status: { $ne: "closed" } },
+      {
+        $set: {
+          status: "closed",
+          lastReplyBy: "system",
+        },
+        $push: {
+          messages: {
+            sender: "system",
+            message: "Ticket closed by support.",
+          },
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
     if (!ticket) {
-      return res.status(404).json({ error: "Ticket not found" });
+      return res.status(404).json({
+        error: "Ticket not found or already closed",
+      });
     }
 
-    if (ticket.status === "closed") {
-      return res.json(ticket); // idempotent
-    }
-
-    ticket.status = "closed";
-    ticket.lastReplyBy = "admin";
-
-    ticket.messages.push({
-      sender: "system",
-      message: "Ticket closed by support.",
-      createdAt: new Date(),
-    });
-
-    await ticket.save();
     res.json(ticket);
   } catch (err) {
     console.error("Close ticket error:", err);
