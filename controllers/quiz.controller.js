@@ -1,4 +1,3 @@
-// controllers/quizController.js (fixed full code)
 import quizzes from "../data/quizzes.json" with { type: "json" };
 import QuizAttempt from "../models/QuizAttempt.js";
 import EmailToken from "../models/EmailToken.js";
@@ -48,8 +47,8 @@ export const requestVerification = async (req, res) => {
 
     res.json({ message: "Verification email sent" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to send email" });
+    console.error('Verification request error:', err.message, err.stack);
+    res.status(500).json({ message: "Failed to send email", error: err.message });
   }
 };
 
@@ -59,7 +58,12 @@ export const verifyEmail = async (req, res) => {
     if (!token) return res.status(400).json({ message: "Token required" });
 
     const record = await EmailToken.findOne({ token });
-    if (!record || new Date(record.expiresAt) < new Date()) {
+    if (!record) {
+      console.log('No token found for:', token);
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+    if (new Date(record.expiresAt) < new Date()) {
+      console.log('Expired token:', token);
       return res.status(400).json({ message: "Invalid or expired token" });
     }
 
@@ -73,8 +77,8 @@ export const verifyEmail = async (req, res) => {
 
     res.json({ verified: true });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Verification failed" });
+    console.error('Verification error:', err.message, err.stack);
+    res.status(500).json({ message: "Verification failed", error: err.message });
   }
 };
 
@@ -84,10 +88,14 @@ export const submitQuiz = async (req, res) => {
     if (!email || !answers) return res.status(400).json({ message: "Missing data" });
 
     const verified = await VerifiedEmail.findOne({ email });
-    if (!verified) return res.status(403).json({ message: "Email not verified" });
+    if (!verified) {
+      console.log('Unverified email attempt:', email);
+      return res.status(403).json({ message: "Email not verified" });
+    }
 
     const lastAttempt = await QuizAttempt.findOne({ email }).sort({ attemptedAt: -1 });
     if (lastAttempt && lastAttempt.nextAllowedAttempt > new Date()) {
+      console.log('Retake locked for:', email, 'until:', lastAttempt.nextAllowedAttempt);
       return res.status(403).json({
         message: "Retake locked",
         nextAllowedAttempt: lastAttempt.nextAllowedAttempt,
@@ -102,6 +110,7 @@ export const submitQuiz = async (req, res) => {
       if (q.type === "mcq" && userAnswer === q.correctAnswer) score++;
       if (q.type === "output" && String(userAnswer).trim() === String(q.correctAnswer).trim()) score++;
     });
+    console.log('Calculated score for', email, ':', score);
 
     const percentage = Math.round((score / quizzes.length) * 100);
     const passed = percentage >= 50;
@@ -116,6 +125,7 @@ export const submitQuiz = async (req, res) => {
       attemptedAt: new Date(),
       nextAllowedAttempt,
     });
+    console.log('Attempt saved:', attempt._id);
 
     await sendMail({
       to: email,
@@ -131,7 +141,23 @@ export const submitQuiz = async (req, res) => {
 
     res.json({ score, percentage, passed, attemptId: attempt._id });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Submission failed" });
+    console.error('Quiz submission error:', err.message, err.stack);
+    res.status(500).json({ message: "Submission failed", error: err.message });
+  }
+};
+
+// Optional: Test email endpoint for debugging
+export const testEmail = async (req, res) => {
+  try {
+    const { to, subject, html } = req.body; // Allow custom input for testing
+    await sendMail({
+      to: to || 'test@example.com',
+      subject: subject || 'Test Email',
+      html: html || '<p>This is a test email.</p>',
+    });
+    res.json({ message: 'Test email sent' });
+  } catch (err) {
+    console.error('Test email error:', err.message, err.stack);
+    res.status(500).json({ message: 'Test failed', error: err.message });
   }
 };
