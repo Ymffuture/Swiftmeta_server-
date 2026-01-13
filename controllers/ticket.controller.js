@@ -97,24 +97,45 @@ export const getAllTickets = async (_req, res) => {
 /* ---------------------------------
    Close Ticket
 ---------------------------------- */
-// PATCH /api/tickets/:ticketId/close
+// PUT /api/tickets/:ticketId/close
 export const closeTicket = async (req, res) => {
   try {
     const { ticketId } = req.params;
 
+    // Only statuses allowed to be set here
+    const allowedClosed = ["closed"];
+
+    const statusToSet = "closed";
+
+    if (!allowedClosed.includes(statusToSet)) {
+      return res.status(400).json({
+        error: "Invalid status value",
+      });
+    }
+
     const ticket = await Ticket.findOneAndUpdate(
       { ticketId },
-      { status: "closed" },
-      { new: true }
+      { status: statusToSet },
+      {
+        new: true,
+        runValidators: true,
+      }
     );
 
     if (!ticket) {
-      return res.status(404).json({ error: "Ticket not found" });
+      return res.status(404).json({
+        error: "Ticket not found",
+      });
     }
 
-    res.json(ticket);
+    res.status(200).json({
+      message: "Ticket closed successfully",
+      ticket,
+    });
   } catch (err) {
     console.error("Close ticket error:", err);
-    res.status(500).json({ error: "Failed to close ticket" });
+    res.status(500).json({
+      error: "Failed to close ticket",
+    });
   }
 };
