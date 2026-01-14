@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY_2 });
 
 export const analyzeTicketAI = async ({ email, subject, message }) => {
   if (!message) throw new Error("Message required");
