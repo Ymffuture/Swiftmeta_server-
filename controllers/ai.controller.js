@@ -1,16 +1,14 @@
-import { analyzeTicketAI } from "../services/gemini.service.js";
-
 export const analyzeTicket = async (req, res) => {
   const { email, subject, message } = req.body;
 
-  if (!email || !message) {
-    return res.status(400).json({ error: "Email and message required" });
+  // Only require message for AI analysis
+  if (!message) {
+    return res.status(400).json({ error: "Message required" });
   }
 
   try {
     const ai = await analyzeTicketAI({ email, subject, message });
 
-    // Flatten response for frontend convenience
     res.json({
       success: true,
       category: ai.category,
