@@ -14,6 +14,7 @@ import quizRoutes from "./routes/quiz.routes.js";
 import users from "./routes/Users.js";
 import contactRoutes from "./routes/contact.routes.js";
 import ticketRoutes from "./routes/ticket.routes.js";
+import aiRoutes from "./routes/ai.routes.js";
 
 dotenv.config();
 
@@ -47,6 +48,8 @@ app.use("/api/users", users) ;
 app.use("/api/quiz", quizRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/tickets", ticketRoutes);
+
+app.use("/api/ai", aiRoutes);
 
 mongoose
   .connect(process.env.MONGO_URI)
