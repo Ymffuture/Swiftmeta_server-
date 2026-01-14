@@ -1,11 +1,11 @@
-import { GoogleGenAI } from "@google/genai"; // Correct package
-import 'dotenv/config'; // Ensure environment variables are loaded
+import { GoogleGenAI } from "@google/genai";
 
-const genAI = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-export async function analyzeTicketAI({ email, subject, message }) {
+export const analyzeTicketAI = async (req, res) => {
+  const { email, subject, message } = req.body;
+  if (!message) return res.status(400).json({ error: "Message required" });
+
   const model = genAI.getModel("gemini-2.5-flash");
 
   const prompt = `
@@ -40,16 +40,16 @@ OUTPUT FORMAT:
 }
 `;
 
-  const result = await model.generateContent({ prompt });
-
-  // Extract text safely
-  const text = result.output?.[0]?.content?.[0]?.text?.trim();
-  if (!text) throw new Error("AI did not return any text");
-
   try {
-    return JSON.parse(text);
+    const result = await model.generateContent({ prompt });
+    const text = result.output?.[0]?.content?.[0]?.text?.trim();
+
+    if (!text) return res.status(500).json({ error: "AI did not return text" });
+
+    const json = JSON.parse(text);
+    res.json(json);
   } catch (err) {
-    console.error("Failed to parse AI response:", text);
-    throw err;
+    console.error(err);
+    res.status(500).json({ error: "AI failed to process ticket" });
   }
-}
+};
