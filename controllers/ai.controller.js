@@ -10,16 +10,25 @@ export const analyzeTicket = async (req, res) => {
   try {
     const ai = await analyzeTicketAI({ email, subject, message });
 
+    // Flatten response for frontend convenience
     res.json({
       success: true,
-      ai,
+      category: ai.category,
+      urgency: ai.urgency,
+      sentiment: ai.sentiment,
+      suggestedSubject: ai.suggestedSubject,
+      improvedMessage: ai.improvedMessage,
     });
   } catch (err) {
     console.error("Gemini AI failed:", err.message);
 
-    res.json({
+    res.status(500).json({
       success: false,
-      ai: null,
+      category: null,
+      urgency: null,
+      sentiment: null,
+      suggestedSubject: null,
+      improvedMessage: null,
     });
   }
 };
