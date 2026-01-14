@@ -6,21 +6,21 @@ import emailjs from '@emailjs/nodejs';
    EmailJS Initialization
 ---------------------------------- */
 emailjs.init({
-  publicKey: process.env.EMAILJS_PUBLIC_KEY,
-  privateKey: process.env.EMAILJS_PRIVATE_KEY,
+  publicKey: process.env.EMAILJS_PUBLIC_KEY_2,
+  privateKey: process.env.EMAILJS_PRIVATE_KEY_2,
 });
 
 /* ---------------------------------
    Helper: Send Email Notification (fire-and-forget)
 ---------------------------------- */
 const sendEmailNotification = async (templateId, params) => {
-  if (!process.env.EMAILJS_SERVICE_ID || !templateId) {
+  if (!process.env.EMAILJS_SERVICE_ID_2 || !templateId) {
     return; // Skip silently if not configured
   }
 
   try {
     await emailjs.send(
-      process.env.EMAILJS_SERVICE_ID,
+      process.env.EMAILJS_SERVICE_ID_2,
       templateId,
       params
     );
