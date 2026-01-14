@@ -1,6 +1,7 @@
-import { GoogleGenerativeAI } from "@google/genai"; // Use the correct package
+import { GoogleGenAI } from "@google/genai"; // Correct package
+import 'dotenv/config'; // Ensure environment variables are loaded
 
-const genAI = new GoogleGenerativeAI({
+const genAI = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
@@ -41,7 +42,7 @@ OUTPUT FORMAT:
 
   const result = await model.generateContent({ prompt });
 
-  // Adjust based on SDK version
+  // Extract text safely
   const text = result.output?.[0]?.content?.[0]?.text?.trim();
   if (!text) throw new Error("AI did not return any text");
 
