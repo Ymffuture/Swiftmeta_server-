@@ -1,9 +1,11 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "@google/genai"; // Use the correct package
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
 
 export async function analyzeTicketAI({ email, subject, message }) {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const model = genAI.getModel("gemini-2.5-flash");
 
   const prompt = `
 Analyze this support ticket and respond ONLY with valid JSON.
@@ -37,8 +39,16 @@ OUTPUT FORMAT:
 }
 `;
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
+  const result = await model.generateContent({ prompt });
 
-  return JSON.parse(text);
+  // Adjust based on SDK version
+  const text = result.output?.[0]?.content?.[0]?.text?.trim();
+  if (!text) throw new Error("AI did not return any text");
+
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    console.error("Failed to parse AI response:", text);
+    throw err;
+  }
 }
