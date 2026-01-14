@@ -2,9 +2,8 @@ import { GoogleGenAI } from "@google/genai";
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-export const analyzeTicketAI = async (req, res) => {
-  const { email, subject, message } = req.body;
-  if (!message) return res.status(400).json({ error: "Message required" });
+export const analyzeTicketAI = async ({ email, subject, message }) => {
+  if (!message) throw new Error("Message required");
 
   const model = genAI.getModel("gemini-2.5-flash");
 
@@ -40,16 +39,10 @@ OUTPUT FORMAT:
 }
 `;
 
-  try {
-    const result = await model.generateContent({ prompt });
-    const text = result.output?.[0]?.content?.[0]?.text?.trim();
+  const result = await model.generateContent({ prompt });
+  const text = result.output?.[0]?.content?.[0]?.text?.trim();
 
-    if (!text) return res.status(500).json({ error: "AI did not return text" });
+  if (!text) throw new Error("AI did not return text");
 
-    const json = JSON.parse(text);
-    res.json(json);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "AI failed to process ticket" });
-  }
+  return JSON.parse(text);
 };
