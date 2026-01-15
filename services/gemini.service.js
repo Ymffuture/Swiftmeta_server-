@@ -8,42 +8,34 @@ export const generateAIResponse = async ({ email, subject, message }) => {
   });
 
   const prompt = `
-Return ONLY valid JSON. No markdown. No explanation. No extra text.
+You are an AI assistant for a support ticket system.
 
-Allowed categories: Authentication, Billing, Bug, Feature Request, General, Other
-Allowed urgency: Low, Medium, High
-Allowed sentiment: Calm, Frustrated, Angry
+STRICT RULES:
+- Generate EXACTLY ONE suggestion
+- No alternatives
+- No lists
+- No explanations
+- No markdown
+- One improved message only
 
-INPUT:
-Email: ${email || "not provided"}
-Subject: ${subject || "EMPTY"}
+Input ticket:
+Email: ${email || "N/A"}
+Subject: ${subject || "N/A"}
 Message: ${message}
 
-JSON FORMAT:
+Return ONLY valid JSON in this format:
+
 {
-  "category": "",
-  "urgency": "",
-  "sentiment": "",
-  "suggestedSubject": "",
   "improvedMessage": ""
 }
 `;
 
   const result = await model.generateContent(prompt);
+  const text = result.response.text();
 
-  const rawText = result.response.text();
+  // 🔒 Extract JSON safely
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("No JSON returned");
 
-  // ✅ SAFELY extract JSON even if Gemini adds text
-  const match = rawText.match(/\{[\s\S]*\}/);
-
-  if (!match) {
-    throw new Error("No JSON found in Gemini response");
-  }
-
-  try {
-    return JSON.parse(match[0]);
-  } catch {
-    console.error("Invalid JSON:", rawText);
-    throw new Error("Failed to parse Gemini JSON");
-  }
+  return JSON.parse(match[0]);
 };
