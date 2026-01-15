@@ -7,26 +7,22 @@ export const analyzeTicket = async (req, res) => {
     if (!message?.trim()) {
       return res.status(400).json({
         success: false,
-        error: "Message is required",
+        error: "Message required",
       });
     }
 
-    const aiResult = await generateAIResponse({
-      email,
-      subject,
-      message,
-    });
+    const ai = await generateAIResponse({ email, subject, message });
 
     res.json({
       success: true,
-      data: aiResult, // ✅ ALWAYS wrapped
+      data: ai, // { improvedMessage }
     });
   } catch (err) {
-    console.error("AI controller error:", err.message);
+    console.error("AI error:", err.message);
 
     res.status(500).json({
       success: false,
-      error: "AI processing failed",
+      error: "AI failed to generate suggestion",
     });
   }
 };
