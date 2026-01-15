@@ -6,7 +6,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 export const generateAIResponse = async ({ email, subject, message }) => {
   try {
     const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",           // or gemini-1.5-pro, gemini-2.0-flash etc
+      model: "gemini-2.5-flash",           // or gemini-1.5-pro, gemini-2.0-flash etc
     });
 
     const prompt = `Analyze this support ticket and respond **ONLY** with valid JSON. No markdown, no explanation, no extra text.
