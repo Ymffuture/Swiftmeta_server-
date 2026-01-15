@@ -1,32 +1,26 @@
+// controllers/ai.controller.js
+import { generateAIResponse } from "../services/gemini.service.js";
+
 export const analyzeTicket = async (req, res) => {
-  const { email, subject, message } = req.body;
-
-  // Only require message for AI analysis
-  if (!message) {
-    return res.status(400).json({ error: "Message required" });
-  }
-
   try {
-    const ai = await analyzeTicketAI({ email, subject, message });
+    const { email, subject, message } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+
+    const aiResult = await generateAIResponse({ email, subject, message });
 
     res.json({
       success: true,
-      category: ai.category,
-      urgency: ai.urgency,
-      sentiment: ai.sentiment,
-      suggestedSubject: ai.suggestedSubject,
-      improvedMessage: ai.improvedMessage,
+      ...aiResult
     });
   } catch (err) {
-    console.error("Gemini AI failed:", err.message);
-
+    console.error("AI controller error:", err.message);
     res.status(500).json({
       success: false,
-      category: null,
-      urgency: null,
-      sentiment: null,
-      suggestedSubject: null,
-      improvedMessage: null,
+      error: "AI processing failed",
+      details: err.message.includes("JSON") ? "Invalid response format" : "Service error"
     });
   }
 };
