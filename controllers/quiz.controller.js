@@ -6,7 +6,7 @@ import crypto from "crypto";
 import "dotenv/config";
 
 /* ======================================================
-   REQUEST EMAIL VERIFICATION (SEND DATA TO FRONTEND)
+   REQUEST EMAIL VERIFICATION
 ====================================================== */
 export const requestVerification = async (req, res) => {
   try {
@@ -16,7 +16,13 @@ export const requestVerification = async (req, res) => {
       return res.status(400).json({ message: "Email required" });
     }
 
-    // Remove previous tokens
+    // ✅ Already verified
+    const alreadyVerified = await VerifiedEmail.findOne({ email });
+    if (alreadyVerified) {
+      return res.json({ alreadyVerified: true });
+    }
+
+    // 🔁 Remove old tokens
     await EmailToken.deleteMany({ email });
 
     const token = crypto.randomBytes(32).toString("hex");
@@ -29,7 +35,7 @@ export const requestVerification = async (req, res) => {
 
     const verifyUrl = `${process.env.FRONTEND_URL}/verify?token=${token}`;
 
-    // ✅ SEND PAYLOAD FOR EMAILJS
+    // ⬅️ Frontend sends this to EmailJS
     res.json({
       emailPayload: {
         to_email: email,
@@ -45,7 +51,7 @@ export const requestVerification = async (req, res) => {
 };
 
 /* ======================================================
-   VERIFY EMAIL TOKEN
+   VERIFY EMAIL TOKEN (100% SAFE)
 ====================================================== */
 export const verifyEmail = async (req, res) => {
   try {
@@ -55,21 +61,31 @@ export const verifyEmail = async (req, res) => {
       return res.status(400).json({ message: "Token required" });
     }
 
-    const record = await EmailToken.findOne({ token });
+    const record = await EmailToken.findOne({
+      token,
+      consumed: false,
+      expiresAt: { $gt: new Date() },
+    });
 
-    if (!record || new Date(record.expiresAt) < new Date()) {
+    if (!record) {
       return res.status(400).json({ message: "Invalid or expired token" });
     }
 
+    // ✅ Save verified email
     await VerifiedEmail.updateOne(
       { email: record.email },
-      { $setOnInsert: { email: record.email } },
+      { $set: { verifiedAt: new Date() } },
       { upsert: true }
     );
 
-    await EmailToken.deleteOne({ _id: record._id });
+    // 🔒 Mark token as used
+    record.consumed = true;
+    await record.save();
 
-    res.json({ verified: true });
+    res.json({
+      verified: true,
+      email: record.email,
+    });
   } catch (err) {
     console.error("Verification error:", err);
     res.status(500).json({ message: "Verification failed" });
@@ -77,7 +93,7 @@ export const verifyEmail = async (req, res) => {
 };
 
 /* ======================================================
-   SUBMIT QUIZ (RETURN RESULT + EMAILJS PAYLOAD)
+   SUBMIT QUIZ
 ====================================================== */
 export const submitQuiz = async (req, res) => {
   try {
@@ -87,6 +103,7 @@ export const submitQuiz = async (req, res) => {
       return res.status(400).json({ message: "Missing data" });
     }
 
+    // ❗ HARD CHECK (no false success)
     const verified = await VerifiedEmail.findOne({ email });
     if (!verified) {
       return res.status(403).json({ message: "Email not verified" });
@@ -113,8 +130,9 @@ export const submitQuiz = async (req, res) => {
       if (
         q.type === "output" &&
         String(userAnswer).trim() === String(q.correctAnswer).trim()
-      )
+      ) {
         score++;
+      }
     });
 
     const percentage = Math.round((score / quizzes.length) * 100);
@@ -134,7 +152,7 @@ export const submitQuiz = async (req, res) => {
       nextAllowedAttempt,
     });
 
-    // ✅ EMAILJS RESULT PAYLOAD
+    // ⬅️ EmailJS result payload
     res.json({
       score,
       percentage,
