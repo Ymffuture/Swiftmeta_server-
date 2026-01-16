@@ -51,12 +51,9 @@ export const verifyEmail = async (req, res) => {
   try {
     const { token } = req.query;
 
-    if (!token) {
-      return res.status(400).json({ message: "Token required" });
-    }
+    if (!token) return res.status(400).json({ message: "Token required" });
 
     const record = await EmailToken.findOne({ token });
-
     if (!record || new Date(record.expiresAt) < new Date()) {
       return res.status(400).json({ message: "Invalid or expired token" });
     }
@@ -69,12 +66,13 @@ export const verifyEmail = async (req, res) => {
 
     await EmailToken.deleteOne({ _id: record._id });
 
-    res.json({ verified: true });
+    res.json({ verified: true, email: record.email }); // ✅ return email
   } catch (err) {
     console.error("Verification error:", err);
     res.status(500).json({ message: "Verification failed" });
   }
 };
+
 
 /* ======================================================
    SUBMIT QUIZ (RETURN RESULT + EMAILJS PAYLOAD)
