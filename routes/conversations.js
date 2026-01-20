@@ -1,6 +1,6 @@
 import { Router } from "express";
 import Conversation from "../models/Conversation.js";
-import { authenticateSupabase } from "../middleware/SupabaseAuth.js";
+import { authenticateSupabase } from "../middleware/supabaseAuth.js";
 
 const router = Router();
 
