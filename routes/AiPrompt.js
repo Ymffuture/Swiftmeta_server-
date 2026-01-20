@@ -31,4 +31,4 @@ Tone:
 - Human tone
 `;
 
-export systemPrompt;
+export {systemPrompt} ;
