@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { GoogleGenAI } from "@google/genai";
-import {systemPrompt} from "./AiPrompt"
+import {systemPrompt} from "./AiPrompt.js"
 const router = Router();
 
 
