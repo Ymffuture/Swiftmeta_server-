@@ -49,7 +49,7 @@ router.get("/", async (req, res) => {
 
 
 // routes/contact.js
-router.patch("/:id/status", async (req, res) => {
+router.put("/:id/status", async (req, res) => {
   try {
     const { status } = req.body;
 
@@ -73,6 +73,7 @@ router.patch("/:id/status", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
    // DELETE /api/contact/:id
