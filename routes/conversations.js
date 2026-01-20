@@ -1,6 +1,6 @@
 import { Router } from "express";
 import Conversation from "../models/Conversation.js";
-import { requireSupabaseAuth } from "../middleware/requireSupabaseAuth.js";
+import { authenticateSupabase } from "../middleware/SupabaseAuth.js";
 
 const router = Router();
 
@@ -8,7 +8,7 @@ const router = Router();
  * GET /api/conversations
  * Returns all conversations for logged-in user
  */
-router.get("/", requireSupabaseAuth, async (req, res) => {
+router.get("/", authenticateSupabase, async (req, res) => {
   try {
     const userId = req.user.id;
 
