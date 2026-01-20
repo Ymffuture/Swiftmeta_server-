@@ -15,6 +15,8 @@ import users from "./routes/Users.js";
 import contactRoutes from "./routes/contact.routes.js";
 import ticketRoutes from "./routes/ticket.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
+import conversationsRoute from "./routes/conversations.js";
+
 
 dotenv.config();
 
@@ -48,6 +50,7 @@ app.use("/api/users", users) ;
 app.use("/api/quiz", quizRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/tickets", ticketRoutes);
+app.use("/api/conversations", conversationsRoute);
 
 app.use("/api/ai", aiRoutes);
 
