@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";           // assuming this is correct for your version
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import { systemPrompt } from "./AiPrompt.js";
@@ -16,9 +16,7 @@ router.post("/", authenticateSupabase, async (req, res) => {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
-    /* --------------------------------------------------
-       1️⃣ Get or create conversation
-    -------------------------------------------------- */
+    // 1. Get or create conversation
     let conversation;
 
     if (conversationId) {
@@ -35,24 +33,18 @@ router.post("/", authenticateSupabase, async (req, res) => {
       });
     }
 
-    /* --------------------------------------------------
-       2️⃣ Save USER message
-    -------------------------------------------------- */
+    // 2. Save USER message
     await Message.create({
       conversationId: conversation._id,
       role: "user",
       content: prompt,
     });
 
-    /* --------------------------------------------------
-       3️⃣ Call Gemini
-    -------------------------------------------------- */
-    const ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-    });
+    // 3. Call Gemini (fixed)
+    const genai = new GoogleGenAI(process.env.GEMINI_API_KEY);   // ← fixed init
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+    const response = await genai.models.generateContent({
+      model: "gemini-2.0-flash",                                 // ← fixed model
       contents: [
         {
           role: "user",
@@ -61,13 +53,13 @@ router.post("/", authenticateSupabase, async (req, res) => {
       ],
     });
 
-    const reply = response.response.text(); // ✅ FIX
+    const reply = response.text;               // try this
+    // If above fails, use:
+    // const reply = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
     if (!reply) throw new Error("Empty AI response");
 
-    /* --------------------------------------------------
-       4️⃣ Save AI message
-    -------------------------------------------------- */
+    // 4. Save AI message
     await Message.create({
       conversationId: conversation._id,
       role: "assistant",
@@ -81,7 +73,7 @@ router.post("/", authenticateSupabase, async (req, res) => {
     });
   } catch (err) {
     console.error("AI Chat Error:", err);
-    res.status(500).json({ error: "AI request failed" });
+    res.status(500).json({ error: "AI request failed", details: err.message });
   }
 });
 
