@@ -3,7 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import { systemPrompt } from "./AiPrompt.js";
-import { authenticateJWT } from "../middleware/auth.js";
+import { authenticateJWT } from "../middleware/authentication.js";
 
 const router = Router();
 
