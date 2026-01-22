@@ -1,19 +1,19 @@
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
 
-export default async function auth(req, res, next) {
-  try {
-    const auth = req.headers.authorization;
-    if (!auth) return res.status(401).json({ message: "No auth" });
+export const authenticateJWT = (req, res, next) => {
+  const authHeader = req.headers.authorization;
 
-    const token = auth.split(" ")[1];
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(payload.sub);
-    if (!user) return res.status(401).json({ message: "Bad token" });
-
-    req.user = user;
-    next();
-  } catch {
-    return res.status(401).json({ message: "Unauthorized" });
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Missing token" });
   }
-}
+
+  try {
+    const token = authHeader.replace("Bearer ", "");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    req.user = decoded; // { id, email }
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+};
