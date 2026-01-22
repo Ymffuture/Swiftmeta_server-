@@ -12,12 +12,14 @@ router.post("/", authenticateJWT, async (req, res) => {
 
   try {
     const { prompt, conversationId } = req.body;
-    if (!prompt?.trim()) {
+    if (!prompt?.trim())
       return res.status(400).json({ error: "Prompt required" });
-    }
 
     let conversation = conversationId
-      ? await Conversation.findOne({ _id: conversationId, userId: req.user.id })
+      ? await Conversation.findOne({
+          _id: conversationId,
+          userId: req.user.id,
+        })
       : null;
 
     if (!conversation) {
@@ -46,8 +48,10 @@ router.post("/", authenticateJWT, async (req, res) => {
     });
 
     const reply =
-      response.text ??
+      response.text ||
       response.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!reply) throw new Error("Empty AI response");
 
     await Message.create({
       conversationId: conversation._id,
