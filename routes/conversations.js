@@ -1,6 +1,6 @@
 import { Router } from "express";
 import Conversation from "../models/Conversation.js";
-import { authenticateJWT } from "../middleware/auth.js";
+import { authenticateJWT } from "../middleware/authocation.js";
 
 const router = Router();
 
