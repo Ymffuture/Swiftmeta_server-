@@ -1,47 +1,92 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import { OAuth2Client } from "google-auth-library";
 import User from "../models/User.js";
+import { signToken } from "../utils/jwt.js";
 
 const router = Router();
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-/* REGISTER */
+/**
+ * EMAIL REGISTER
+ */
 router.post("/register", async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password, name } = req.body;
 
-  const exists = await User.findOne({ email });
-  if (exists) return res.status(400).json({ error: "User exists" });
+    if (!email || !password)
+      return res.status(400).json({ error: "Missing fields" });
 
-  const hash = await bcrypt.hash(password, 10);
+    const exists = await User.findOne({ email });
+    if (exists) return res.status(409).json({ error: "User exists" });
 
-  const user = await User.create({ email, password: hash });
+    const hashed = await bcrypt.hash(password, 10);
 
-  const token = jwt.sign(
-    { id: user._id, email: user.email },
-    process.env.JWT_SECRET,
-    { expiresIn: "7d" }
-  );
+    const user = await User.create({
+      email,
+      password: hashed,
+      name,
+      provider: "email",
+    });
 
-  res.json({ token });
+    const token = signToken(user);
+    res.json({ token, user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-/* LOGIN */
+/**
+ * EMAIL LOGIN
+ */
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  const user = await User.findOne({ email });
-  if (!user) return res.status(401).json({ error: "Invalid credentials" });
+    const user = await User.findOne({ email });
+    if (!user || !user.password)
+      return res.status(401).json({ error: "Invalid credentials" });
 
-  const ok = await bcrypt.compare(password, user.password);
-  if (!ok) return res.status(401).json({ error: "Invalid credentials" });
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) return res.status(401).json({ error: "Invalid credentials" });
 
-  const token = jwt.sign(
-    { id: user._id, email: user.email },
-    process.env.JWT_SECRET,
-    { expiresIn: "7d" }
-  );
+    const token = signToken(user);
+    res.json({ token, user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  res.json({ token });
+/**
+ * GOOGLE LOGIN
+ */
+router.post("/google", async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    let user = await User.findOne({ email: payload.email });
+
+    if (!user) {
+      user = await User.create({
+        email: payload.email,
+        name: payload.name,
+        avatar: payload.picture,
+        provider: "google",
+      });
+    }
+
+    const jwtToken = signToken(user);
+    res.json({ token: jwtToken, user });
+  } catch (err) {
+    res.status(401).json({ error: "Google auth failed" });
+  }
 });
 
 export default router;
