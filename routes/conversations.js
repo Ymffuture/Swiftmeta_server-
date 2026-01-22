@@ -5,11 +5,17 @@ import { authenticateJWT } from "../middleware/auth.js";
 const router = Router();
 
 router.get("/", authenticateJWT, async (req, res) => {
-  const conversations = await Conversation.find({ userId: req.user.id })
-    .sort({ lastMessageAt: -1 })
-    .select("_id title lastMessageAt");
+  try {
+    const conversations = await Conversation.find({
+      userId: req.user.id,
+    })
+      .sort({ lastMessageAt: -1 })
+      .select("_id title lastMessageAt");
 
-  res.json(conversations);
+    res.json(conversations);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to load conversations" });
+  }
 });
 
 export default router;
