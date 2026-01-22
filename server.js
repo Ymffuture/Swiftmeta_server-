@@ -7,6 +7,7 @@ import path from "path";
 import fs from "fs";
 
 import authRoutes from "./routes/auth.js";
+import authRoutesB from "./routes/authB.js";
 import postRoutes from "./routes/posts.js";
 import uploadRoutes from "./routes/uploads.js";
 import geminiRouter from "./routes/gemini.js";
@@ -43,6 +44,7 @@ if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 app.use("/uploads", express.static(uploadDir));
 
 app.use("/api/auth", authRoutes);
+app.use("/api/auth/v2", authRoutesB);
 app.use("/api/posts", postRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/gemini", geminiRouter);
