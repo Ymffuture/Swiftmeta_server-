@@ -5,7 +5,7 @@ import User from "../models/UserB.js";
 import { signToken } from "../utils/jwt.js";
 import jwt from "jsonwebtoken";
 import RevokedToken from "../models/RevokedToken.js";
-import { auth } from "../middleware/auth.js";
+import { auth } from "../middleware/authentication.js";
 
 const router = Router();
 
