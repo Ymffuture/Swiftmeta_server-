@@ -5,11 +5,17 @@ import User from "../models/UserB.js";
 import { signToken } from "../utils/jwt.js";
 
 const router = Router();
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-/**
- * EMAIL REGISTER
- */
+/* ===========================
+   GOOGLE CLIENT
+=========================== */
+const googleClient = new OAuth2Client(
+  process.env.GOOGLE_CLIENT_ID
+);
+
+/* ===========================
+   EMAIL REGISTER
+=========================== */
 router.post("/register", async (req, res) => {
   try {
     const { email, password, name } = req.body;
@@ -18,13 +24,14 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Missing fields" });
 
     const exists = await User.findOne({ email });
-    if (exists) return res.status(409).json({ error: "User exists" });
+    if (exists)
+      return res.status(409).json({ error: "User already exists" });
 
-    const hashed = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       email,
-      password: hashed,
+      password: hashedPassword,
       name,
       provider: "email",
     });
@@ -36,9 +43,9 @@ router.post("/register", async (req, res) => {
   }
 });
 
-/**
- * EMAIL LOGIN
- */
+/* ===========================
+   EMAIL LOGIN
+=========================== */
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -47,8 +54,9 @@ router.post("/login", async (req, res) => {
     if (!user || !user.password)
       return res.status(401).json({ error: "Invalid credentials" });
 
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ error: "Invalid credentials" });
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid)
+      return res.status(401).json({ error: "Invalid credentials" });
 
     const token = signToken(user);
     res.json({ token, user });
@@ -57,27 +65,31 @@ router.post("/login", async (req, res) => {
   }
 });
 
-/**
- * GOOGLE LOGIN
- */
+/* ===========================
+   GOOGLE LOGIN (ID TOKEN)
+=========================== */
 router.post("/google", async (req, res) => {
   try {
     const { token } = req.body;
+    if (!token)
+      return res.status(400).json({ error: "Missing Google token" });
 
+    // Verify Google ID token
     const ticket = await googleClient.verifyIdToken({
       idToken: token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
+    const { email, name, picture } = payload;
 
-    let user = await User.findOne({ email: payload.email });
+    let user = await User.findOne({ email });
 
     if (!user) {
       user = await User.create({
-        email: payload.email,
-        name: payload.name,
-        avatar: payload.picture,
+        email,
+        name,
+        avatar: picture,
         provider: "google",
       });
     }
@@ -85,7 +97,8 @@ router.post("/google", async (req, res) => {
     const jwtToken = signToken(user);
     res.json({ token: jwtToken, user });
   } catch (err) {
-    res.status(401).json({ error: "Google auth failed" });
+    console.error("Google auth error:", err);
+    res.status(401).json({ error: "Google authentication failed" });
   }
 });
 
