@@ -3,6 +3,9 @@ import bcrypt from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
 import User from "../models/UserB.js";
 import { signToken } from "../utils/jwt.js";
+import jwt from "jsonwebtoken";
+import RevokedToken from "../models/RevokedToken.js";
+import { auth } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -101,5 +104,27 @@ router.post("/google", async (req, res) => {
     res.status(401).json({ error: "Google authentication failed" });
   }
 });
+
+
+       
+
+/* ===========================
+   LOGOUT
+=========================== */
+router.post("/logout", auth, async (req, res) => {
+  try {
+    const { jti, exp } = req.user;
+
+    await RevokedToken.create({
+      jti,
+      expiresAt: new Date(exp * 1000),
+    });
+
+    res.json({ message: "Logged out successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 export default router;
