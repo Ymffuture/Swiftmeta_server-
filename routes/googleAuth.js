@@ -19,7 +19,7 @@ router.get(
       { expiresIn: "7d" }
     );
 
-    res.redirect(`${process.env.CLIENT_URL}/login?token=${token}`);
+    res.redirect(`${process.env.FRONTEND_URL}/login?token=${token}`);
   }
 );
 
