@@ -17,7 +17,7 @@ import contactRoutes from "./routes/contact.routes.js";
 import ticketRoutes from "./routes/ticket.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
 import conversationsRoute from "./routes/conversations.js";
-
+import messagesRoutes from "./routes/messages.js";
 
 dotenv.config();
 
@@ -53,6 +53,7 @@ app.use("/api/quiz", quizRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/conversations", conversationsRoute);
+app.use("/api/messages", messagesRoutes);
 
 app.use("/api/ai", aiRoutes);
 
