@@ -130,7 +130,7 @@ router.post("/logout", auth, async (req, res) => {
  * GET /api/auth/me
  * Returns current logged-in user
  */
-router.get("/me", auth, async (req, res) => {
+router.get("/me", async (req, res) => {
   try {
     const userId = req.user.id;
 
