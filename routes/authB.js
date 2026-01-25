@@ -126,5 +126,35 @@ router.post("/logout", auth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/auth/me
+ * Returns current logged-in user
+ */
+router.get("/me", authenticateJWT, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await User.findById(userId)
+      .select("_id email avatar provider createdAt")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({
+      id: user._id,
+      email: user.email,
+      avatar: user.avatar || null,
+      provider: user.provider,
+      createdAt: user.createdAt,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch user" });
+  }
+});
+
+export default router;
+
 
 export default router;
