@@ -11,7 +11,6 @@ router.get("/applications", getAllApplications);
 
 router.patch(
   "/applications/:id/status",
-  auth,
   updateApplicationStatus
 );
 
