@@ -155,6 +155,3 @@ router.get("/me", auth, async (req, res) => {
 });
 
 export default router;
-
-
-export default router;
