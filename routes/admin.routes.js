@@ -6,9 +6,11 @@ import {
 
 const router = express.Router();
 
+// GET all applications
 router.get("/applications", getAllApplications);
 
-router.patch(
+// ✅ PUT instead of PATCH
+router.put(
   "/applications/:id/status",
   updateApplicationStatus
 );
