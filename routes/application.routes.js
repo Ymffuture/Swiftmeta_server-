@@ -43,7 +43,12 @@ function isValidSouthAfricanID(id) {
   ) {
     return false;
   }
-
+   
+if (consent !== true) {
+  return res.status(400).json({
+    message: "Consent is required to process personal information",
+  });
+}
   // Citizenship digit (0 or 1)
   const citizenship = parseInt(id[10], 10);
   if (![0, 1].includes(citizenship)) return false;
