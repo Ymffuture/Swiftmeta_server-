@@ -57,7 +57,7 @@ app.use("/api/contact", contactRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/conversations", conversationsRoute);
 app.use("/api/messages", messagesRoutes);
-app.use("/api", applicationRoutes);
+app.use("/api/application", applicationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/ai", aiRoutes);
 
