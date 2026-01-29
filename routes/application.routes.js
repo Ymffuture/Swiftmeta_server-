@@ -1,5 +1,4 @@
 import express from "express";
-import { submitApplication } from "../controllers/application.controller.js";
 import Application from "../models/Application.js";
 import { z } from "zod";
 import { upload } from "../middleware/upload.js";
@@ -7,26 +6,7 @@ import { upload } from "../middleware/upload.js";
 const router = express.Router();
 
 /* ---------------------------------------------------
-   ZOD SCHEMA FOR APPLICATION VALIDATION
---------------------------------------------------- */
-const applicationSchema = z.object({
-  firstName: z.string().min(2, "First name is required"),
-  lastName: z.string().min(2, "Last name is required"),
-  idNumber: z.string().min(13).max(13).refine(isValidSouthAfricanID, {
-    message: "Invalid South African ID number",
-  }),
-  email: z.string().email("Invalid email address"),
-  location: z.string().min(2, "Location is required"),
-  qualification: z.string().min(2, "Qualification is required"),
-  experience: z.string().min(1, "Experience is required"),
-  currentRole: z.string().optional(),
-  portfolio: z.string().optional(),
-   phone: z.string().min(10).optional(),
-
-});
-
-/* ---------------------------------------------------
-   SOUTH AFRICAN ID VALIDATION FUNCTION
+   PURE SA ID VALIDATOR (NO EXPRESS HERE)
 --------------------------------------------------- */
 function isValidSouthAfricanID(id) {
   if (!/^\d{13}$/.test(id)) return false;
@@ -34,10 +14,11 @@ function isValidSouthAfricanID(id) {
   const year = parseInt(id.slice(0, 2), 10);
   const month = parseInt(id.slice(2, 4), 10);
   const day = parseInt(id.slice(4, 6), 10);
+
   const fullYear =
     year <= new Date().getFullYear() % 100 ? 2000 + year : 1900 + year;
-  const date = new Date(fullYear, month - 1, day);
 
+  const date = new Date(fullYear, month - 1, day);
   if (
     date.getFullYear() !== fullYear ||
     date.getMonth() !== month - 1 ||
@@ -45,17 +26,11 @@ function isValidSouthAfricanID(id) {
   ) {
     return false;
   }
-   
-if (consent !== true) {
-  return res.status(400).json({
-    message: "Consent is required to process personal information",
-  });
-}
-  // Citizenship digit (0 or 1)
+
   const citizenship = parseInt(id[10], 10);
   if (![0, 1].includes(citizenship)) return false;
 
-  // Luhn checksum
+  // Luhn check
   let sum = 0;
   let alternate = false;
   for (let i = id.length - 1; i >= 0; i--) {
@@ -72,7 +47,26 @@ if (consent !== true) {
 }
 
 /* ---------------------------------------------------
-   SUBMIT APPLICATION ROUTE
+   ZOD SCHEMA (BODY ONLY)
+--------------------------------------------------- */
+const applicationSchema = z.object({
+  firstName: z.string().min(2),
+  lastName: z.string().min(2),
+  idNumber: z.string().refine(isValidSouthAfricanID, {
+    message: "Invalid South African ID",
+  }),
+  email: z.string().email(),
+  location: z.string().min(2),
+  qualification: z.string().min(2),
+  experience: z.string().min(1),
+  currentRole: z.string().optional(),
+  portfolio: z.string().optional(),
+  phone: z.string().optional(),
+  consent: z.literal("true"), // IMPORTANT (multipart sends strings)
+});
+
+/* ---------------------------------------------------
+   APPLY ROUTE
 --------------------------------------------------- */
 router.post(
   "/apply",
@@ -86,107 +80,69 @@ router.post(
   ]),
   async (req, res) => {
     try {
-      // Validate request body using Zod
-      const parsed = applicationSchema.parse(req.body);
+      /* ---------- VALIDATE BODY ---------- */
+      const data = applicationSchema.parse(req.body);
 
-      // Check for duplicate email or ID
-      const existing = await Application.findOne({
-        $or: [{ email: parsed.email }, { idNumber: parsed.idNumber }],
+      /* ---------- DUPLICATE CHECK ---------- */
+      const exists = await Application.findOne({
+        $or: [{ email: data.email }, { idNumber: data.idNumber }],
       });
 
-      if (existing) {
-        return res.status(400).json({
-          error:
-            "You have already applied. Each ID and email can only be used once.",
+      if (exists) {
+        return res.status(409).json({
+          message: "Application already exists for this email or ID",
         });
       }
 
-      // Create new application
-      const applicationData = {
-        ...parsed,
-        cv: req.files?.cv?.[0]?.path || "",
-        doc1: req.files?.doc1?.[0]?.path || "",
-        doc2: req.files?.doc2?.[0]?.path || "",
-        doc3: req.files?.doc3?.[0]?.path || "",
-        doc4: req.files?.doc4?.[0]?.path || "",
-        doc5: req.files?.doc5?.[0]?.path || "",
-      };
+      /* ---------- MAP DOCUMENTS ---------- */
+      const mapDoc = (file) =>
+        file
+          ? {
+              name: file.originalname,
+              url: file.path,
+              publicId: file.filename,
+            }
+          : undefined;
 
-      const newApplication = new Application(applicationData);
-      await newApplication.save();
+      const application = new Application({
+        ...data,
+        consent: true,
+        documents: {
+          cv: mapDoc(req.files?.cv?.[0]),
+          doc1: mapDoc(req.files?.doc1?.[0]),
+          doc2: mapDoc(req.files?.doc2?.[0]),
+          doc3: mapDoc(req.files?.doc3?.[0]),
+          doc4: mapDoc(req.files?.doc4?.[0]),
+          doc5: mapDoc(req.files?.doc5?.[0]),
+        },
+      });
 
-      res.json({ message: "Application submitted successfully!" });
+      await application.save();
+
+      res.status(201).json({
+        message: "Application submitted successfully",
+      });
     } catch (err) {
+      /* ---------- ZOD ---------- */
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ error: err.errors[0].message });
-      }
-
-      if (err.code === 11000) {
         return res.status(400).json({
-          error:
-            "Duplicate entry detected. Each email and ID must be unique.",
+          message: err.errors[0].message,
         });
       }
 
-      console.error(err);
-      res.status(500).json({ error: "Internal server error" });
+      /* ---------- MONGO DUPLICATE ---------- */
+      if (err.code === 11000) {
+        return res.status(409).json({
+          message: "Duplicate email or ID",
+        });
+      }
+
+      console.error("APPLICATION ERROR:", err);
+      res.status(500).json({
+        message: "Internal server error",
+      });
     }
   }
 );
-
-/* ---------------------------------------------------
-   GET LATEST APPLICATION
---------------------------------------------------- */
-router.get("/latest", async (req, res) => {
-  try {
-    const application = await Application.findOne().sort({ createdAt: -1 });
-    if (!application) return res.status(404).json(null);
-    res.json(application);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to fetch application" });
-  }
-});
-
-/* ---------------------------------------------------
-   SEARCH APPLICATION BY EMAIL OR ID
---------------------------------------------------- */
-const searchSchema = z.object({
-  query: z
-    .string()
-    .min(3, "Query must be at least 3 characters")
-    .max(100),
-});
-
-router.get("/search", async (req, res) => {
-  try {
-    const parsed = searchSchema.parse({ query: req.query.query });
-    const { query } = parsed;
-
-    let application;
-
-    if (query.includes("@")) {
-      // Search by email
-      application = await Application.findOne({ email: query }).lean();
-    } else if (/^\d{6,13}$/.test(query)) {
-      // Search by ID
-      application = await Application.findOne({ idNumber: query }).lean();
-    } else {
-      return res.status(400).json({ error: "Invalid search query" });
-    }
-
-    if (!application) {
-      return res.status(404).json({ error: "Application not found" });
-    }
-
-    res.json(application);
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: err.errors[0].message });
-    }
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
 
 export default router;
