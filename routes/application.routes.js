@@ -6,7 +6,7 @@ import { upload } from "../middleware/upload.js";
 const router = express.Router();
 
 /* ---------------------------------------------------
-   PURE SA ID VALIDATOR (NO EXPRESS HERE)
+   PURE SA ID VALIDATOR
 --------------------------------------------------- */
 function isValidSouthAfricanID(id) {
   if (!/^\d{13}$/.test(id)) return false;
@@ -27,14 +27,14 @@ function isValidSouthAfricanID(id) {
     return false;
   }
 
-  const citizenship = parseInt(id[10], 10);
+  const citizenship = Number(id[10]);
   if (![0, 1].includes(citizenship)) return false;
 
-  // Luhn check
+  // Luhn checksum
   let sum = 0;
   let alternate = false;
   for (let i = id.length - 1; i >= 0; i--) {
-    let n = parseInt(id[i], 10);
+    let n = Number(id[i]);
     if (alternate) {
       n *= 2;
       if (n > 9) n -= 9;
@@ -47,7 +47,7 @@ function isValidSouthAfricanID(id) {
 }
 
 /* ---------------------------------------------------
-   ZOD SCHEMA (BODY ONLY)
+   ZOD BODY SCHEMA
 --------------------------------------------------- */
 const applicationSchema = z.object({
   firstName: z.string().min(2),
@@ -62,7 +62,7 @@ const applicationSchema = z.object({
   currentRole: z.string().optional(),
   portfolio: z.string().optional(),
   phone: z.string().optional(),
-  consent: z.literal("true"), // IMPORTANT (multipart sends strings)
+  consent: z.literal("true"), // multipart sends strings
 });
 
 /* ---------------------------------------------------
@@ -80,10 +80,8 @@ router.post(
   ]),
   async (req, res) => {
     try {
-      /* ---------- VALIDATE BODY ---------- */
       const data = applicationSchema.parse(req.body);
 
-      /* ---------- DUPLICATE CHECK ---------- */
       const exists = await Application.findOne({
         $or: [{ email: data.email }, { idNumber: data.idNumber }],
       });
@@ -94,59 +92,6 @@ router.post(
         });
       }
 
-       
-router.get("/latest", async (req, res) => {
-  try {
-    const application = await Application.findOne().sort({ createdAt: -1 });
-    if (!application) return res.status(404).json(null);
-    res.json(application);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to fetch application" });
-  }
-});
-
-/* ---------------------------------------------------
-   SEARCH APPLICATION BY EMAIL OR ID
---------------------------------------------------- */
-const searchSchema = z.object({
-  query: z
-    .string()
-    .min(3, "Query must be at least 3 characters")
-    .max(100),
-});
-
-router.get("/search", async (req, res) => {
-  try {
-    const parsed = searchSchema.parse({ query: req.query.query });
-    const { query } = parsed;
-
-    let application;
-
-    if (query.includes("@")) {
-      // Search by email
-      application = await Application.findOne({ email: query }).lean();
-    } else if (/^\d{6,13}$/.test(query)) {
-      // Search by ID
-      application = await Application.findOne({ idNumber: query }).lean();
-    } else {
-      return res.status(400).json({ error: "Invalid search query" });
-    }
-
-    if (!application) {
-      return res.status(404).json({ error: "Application not found" });
-    }
-
-    res.json(application);
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: err.errors[0].message });
-    }
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-      /* ---------- MAP DOCUMENTS ---------- */
       const mapDoc = (file) =>
         file
           ? {
@@ -171,30 +116,76 @@ router.get("/search", async (req, res) => {
 
       await application.save();
 
-      res.status(201).json({
-        message: "Application submitted successfully",
-      });
+      res.status(201).json({ message: "Application submitted successfully" });
     } catch (err) {
-      /* ---------- ZOD ---------- */
       if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-        });
+        return res.status(400).json({ message: err.errors[0].message });
       }
 
-      /* ---------- MONGO DUPLICATE ---------- */
       if (err.code === 11000) {
-        return res.status(409).json({
-          message: "Duplicate email or ID",
-        });
+        return res.status(409).json({ message: "Duplicate email or ID" });
       }
 
-      console.error("APPLICATION ERROR:", err);
-      res.status(500).json({
-        message: "Internal server error",
-      });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   }
 );
+
+/* ---------------------------------------------------
+   GET LATEST APPLICATION
+--------------------------------------------------- */
+router.get("/latest", async (req, res) => {
+  try {
+    const application = await Application.findOne().sort({ createdAt: -1 });
+    res.json(application || null);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch application" });
+  }
+});
+
+/* ---------------------------------------------------
+   SEARCH APPLICATION (FIXED)
+--------------------------------------------------- */
+const searchSchema = z.object({
+  query: z.string().trim().min(3),
+});
+
+router.get("/search", async (req, res) => {
+  try {
+    const { query } = searchSchema.parse({
+      query: req.query.query,
+    });
+
+    let application;
+
+    if (query.includes("@")) {
+      application = await Application.findOne({
+        email: query.toLowerCase(),
+      }).lean();
+    } else if (/^\d{13}$/.test(query)) {
+      application = await Application.findOne({
+        idNumber: query,
+      }).lean();
+    } else {
+      return res.status(400).json({
+        message: "Search by email or 13-digit ID number",
+      });
+    }
+
+    if (!application) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+
+    res.json(application);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ message: err.errors[0].message });
+    }
+
+    console.error(err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
 
 export default router;
