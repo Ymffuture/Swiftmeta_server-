@@ -1,12 +1,14 @@
 import express from "express";
-import Application from "../models/Application.js";
 import { z } from "zod";
+import streamifier from "streamifier";
+import cloudinary from "../config/cloudinary.js";
 import { upload } from "../middleware/upload.js";
+import Application from "../models/Application.js";
 
 const router = express.Router();
 
 /* ---------------------------------------------------
-   SA ID VALIDATION + Gender Extractor
+   SA ID VALIDATION + GENDER
 --------------------------------------------------- */
 function isValidSouthAfricanID(id) {
   if (!/^\d{13}$/.test(id)) return false;
@@ -23,14 +25,12 @@ function isValidSouthAfricanID(id) {
     date.getFullYear() !== fullYear ||
     date.getMonth() !== month - 1 ||
     date.getDate() !== day
-  ) {
+  )
     return false;
-  }
 
   const citizenship = parseInt(id[10], 10);
   if (![0, 1].includes(citizenship)) return false;
 
-  // Luhn check
   let sum = 0;
   let alternate = false;
   for (let i = id.length - 1; i >= 0; i--) {
@@ -46,33 +46,43 @@ function isValidSouthAfricanID(id) {
   return sum % 10 === 0;
 }
 
-// Extract gender from SA ID
-function extractGenderFromSAID(id) {
-  const genderDigits = parseInt(id.slice(6, 10), 10);
-  return genderDigits <= 4999 ? "Female" : "Male";
-}
+const extractGenderFromSAID = (id) =>
+  parseInt(id.slice(6, 10), 10) <= 4999 ? "Female" : "Male";
 
 /* ---------------------------------------------------
-   ZOD SCHEMA (BODY ONLY)
+   CLOUDINARY UPLOADER (RAW FILES)
+--------------------------------------------------- */
+const uploadToCloudinary = (file, folder) =>
+  new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder, resource_type: "raw" }, // 🔥 PDFs/DOCX
+      (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      }
+    );
+    streamifier.createReadStream(file.buffer).pipe(stream);
+  });
+
+/* ---------------------------------------------------
+   ZOD BODY SCHEMA
 --------------------------------------------------- */
 const applicationSchema = z.object({
   firstName: z.string().min(2),
   lastName: z.string().min(2),
-  idNumber: z.string().refine(isValidSouthAfricanID, {
-    message: "Invalid South African ID",
-  }),
+  idNumber: z.string().refine(isValidSouthAfricanID),
   email: z.string().email(),
+  phone: z.string().optional(),
   location: z.string().min(2),
   qualification: z.string().min(2),
   experience: z.string().min(1),
   currentRole: z.string().optional(),
   portfolio: z.string().optional(),
-  phone: z.string().optional(),
-  consent: z.literal("true"), // multipart/form-data sends strings
+  consent: z.literal("true"), // multipart/form-data
 });
 
 /* ---------------------------------------------------
-   APPLY ROUTE
+   APPLY
 --------------------------------------------------- */
 router.post(
   "/apply",
@@ -86,50 +96,56 @@ router.post(
   ]),
   async (req, res) => {
     try {
-      const data = applicationSchema.parse(req.body);
+      const body = applicationSchema.parse(req.body);
 
-      // Duplicate check
+      // Duplicate protection
       const exists = await Application.findOne({
-        $or: [{ email: data.email }, { idNumber: data.idNumber }],
+        $or: [{ email: body.email }, { idNumber: body.idNumber }],
       });
-      if (exists) {
+      if (exists)
         return res.status(409).json({
-          message: "Application already exists for this email or ID",
+          message: "Application already exists for this ID or email",
         });
+
+      const gender = extractGenderFromSAID(body.idNumber);
+
+      // Upload documents
+      const uploadDoc = async (file, folder) =>
+        file
+          ? await uploadToCloudinary(file, folder)
+          : null;
+
+      const docs = {};
+      for (const key of ["cv", "doc1", "doc2", "doc3", "doc4", "doc5"]) {
+        const file = req.files?.[key]?.[0];
+        if (file) {
+          const uploaded = await uploadDoc(file, "applications");
+          docs[key] = {
+            name: file.originalname,
+            url: uploaded.secure_url,
+            publicId: uploaded.public_id,
+          };
+        }
       }
 
-      // Map uploaded files
-      const mapDoc = (file) =>
-        file
-          ? { name: file.originalname, url: file.path, publicId: file.filename }
-          : undefined;
-
-      // Compute derived fields
-      const gender = extractGenderFromSAID(data.idNumber);
-
-      // Save application
       const application = new Application({
-        ...data,
-        gender,
+        ...body,
         consent: true,
-        documents: {
-          cv: mapDoc(req.files?.cv?.[0]),
-          doc1: mapDoc(req.files?.doc1?.[0]),
-          doc2: mapDoc(req.files?.doc2?.[0]),
-          doc3: mapDoc(req.files?.doc3?.[0]),
-          doc4: mapDoc(req.files?.doc4?.[0]),
-          doc5: mapDoc(req.files?.doc5?.[0]),
-        },
+        gender,
+        documents: docs,
       });
 
       await application.save();
+
       res.status(201).json({ message: "Application submitted successfully" });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
       if (err.code === 11000) {
-        return res.status(409).json({ message: "Duplicate email or ID or Phone number" });
+        return res.status(409).json({
+          message: "Duplicate email, ID or phone number",
+        });
       }
       console.error("APPLICATION ERROR:", err);
       res.status(500).json({ message: "Internal server error" });
@@ -138,56 +154,26 @@ router.post(
 );
 
 /* ---------------------------------------------------
-   GET LATEST APPLICATION
+   LATEST
 --------------------------------------------------- */
-router.get("/latest", async (req, res) => {
-  try {
-    const application = await Application.findOne().sort({ createdAt: -1 });
-    if (!application) return res.status(404).json(null);
-    res.json(application);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to fetch application" });
-  }
+router.get("/latest", async (_, res) => {
+  const app = await Application.findOne().sort({ createdAt: -1 });
+  res.json(app || null);
 });
 
 /* ---------------------------------------------------
-   SEARCH APPLICATION BY EMAIL OR ID
+   SEARCH
 --------------------------------------------------- */
-const searchSchema = z.object({
-  query: z
-    .string()
-    .min(3, "Query must be at least 3 characters")
-    .max(100),
-});
-
 router.get("/search", async (req, res) => {
-  try {
-    const parsed = searchSchema.parse({ query: req.query.query });
-    const { query } = parsed;
+  const query = req.query.query;
+  if (!query) return res.status(400).json({ message: "Query required" });
 
-    let application;
+  const app = query.includes("@")
+    ? await Application.findOne({ email: query })
+    : await Application.findOne({ idNumber: query });
 
-    if (query.includes("@")) {
-      application = await Application.findOne({ email: query }).lean();
-    } else if (/^\d{6,13}$/.test(query)) {
-      application = await Application.findOne({ idNumber: query }).lean();
-    } else {
-      return res.status(400).json({ error: "Invalid search query" });
-    }
-
-    if (!application) {
-      return res.status(404).json({ error: "Application not found" });
-    }
-
-    res.json(application);
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: err.errors[0].message });
-    }
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  if (!app) return res.status(404).json({ message: "Not found" });
+  res.json(app);
 });
 
 export default router;
