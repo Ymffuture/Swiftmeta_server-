@@ -28,9 +28,6 @@ const ApplicationSchema = new mongoose.Schema(
       cv: DocumentSchema,
       doc1: DocumentSchema,
       doc2: DocumentSchema,
-      doc3: DocumentSchema,
-      doc4: DocumentSchema,
-      doc5: DocumentSchema,
     },
 
     // Status
