@@ -21,6 +21,8 @@ const applicationSchema = z.object({
   experience: z.string().min(1, "Experience is required"),
   currentRole: z.string().optional(),
   portfolio: z.string().optional(),
+   phone: z.string().min(10).optional(),
+
 });
 
 /* ---------------------------------------------------
