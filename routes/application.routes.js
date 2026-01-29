@@ -6,7 +6,7 @@ import { upload } from "../middleware/upload.js";
 const router = express.Router();
 
 /* ---------------------------------------------------
-   PURE SA ID VALIDATOR
+   SA ID VALIDATION + Gender Extractor
 --------------------------------------------------- */
 function isValidSouthAfricanID(id) {
   if (!/^\d{13}$/.test(id)) return false;
@@ -17,8 +17,8 @@ function isValidSouthAfricanID(id) {
 
   const fullYear =
     year <= new Date().getFullYear() % 100 ? 2000 + year : 1900 + year;
-
   const date = new Date(fullYear, month - 1, day);
+
   if (
     date.getFullYear() !== fullYear ||
     date.getMonth() !== month - 1 ||
@@ -27,14 +27,14 @@ function isValidSouthAfricanID(id) {
     return false;
   }
 
-  const citizenship = Number(id[10]);
+  const citizenship = parseInt(id[10], 10);
   if (![0, 1].includes(citizenship)) return false;
 
-  // Luhn checksum
+  // Luhn check
   let sum = 0;
   let alternate = false;
   for (let i = id.length - 1; i >= 0; i--) {
-    let n = Number(id[i]);
+    let n = parseInt(id[i], 10);
     if (alternate) {
       n *= 2;
       if (n > 9) n -= 9;
@@ -46,8 +46,14 @@ function isValidSouthAfricanID(id) {
   return sum % 10 === 0;
 }
 
+// Extract gender from SA ID
+function extractGenderFromSAID(id) {
+  const genderDigits = parseInt(id.slice(6, 10), 10);
+  return genderDigits <= 4999 ? "Female" : "Male";
+}
+
 /* ---------------------------------------------------
-   ZOD BODY SCHEMA
+   ZOD SCHEMA (BODY ONLY)
 --------------------------------------------------- */
 const applicationSchema = z.object({
   firstName: z.string().min(2),
@@ -62,7 +68,7 @@ const applicationSchema = z.object({
   currentRole: z.string().optional(),
   portfolio: z.string().optional(),
   phone: z.string().optional(),
-  consent: z.literal("true"), // multipart sends strings
+  consent: z.literal("true"), // multipart/form-data sends strings
 });
 
 /* ---------------------------------------------------
@@ -82,27 +88,29 @@ router.post(
     try {
       const data = applicationSchema.parse(req.body);
 
+      // Duplicate check
       const exists = await Application.findOne({
         $or: [{ email: data.email }, { idNumber: data.idNumber }],
       });
-
       if (exists) {
         return res.status(409).json({
           message: "Application already exists for this email or ID",
         });
       }
 
+      // Map uploaded files
       const mapDoc = (file) =>
         file
-          ? {
-              name: file.originalname,
-              url: file.path,
-              publicId: file.filename,
-            }
+          ? { name: file.originalname, url: file.path, publicId: file.filename }
           : undefined;
 
+      // Compute derived fields
+      const gender = extractGenderFromSAID(data.idNumber);
+
+      // Save application
       const application = new Application({
         ...data,
+        gender,
         consent: true,
         documents: {
           cv: mapDoc(req.files?.cv?.[0]),
@@ -115,18 +123,15 @@ router.post(
       });
 
       await application.save();
-
       res.status(201).json({ message: "Application submitted successfully" });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
-
       if (err.code === 11000) {
-        return res.status(409).json({ message: "Duplicate email or ID" });
+        return res.status(409).json({ message: "Duplicate email or ID or Phone number" });
       }
-
-      console.error(err);
+      console.error("APPLICATION ERROR:", err);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -138,53 +143,50 @@ router.post(
 router.get("/latest", async (req, res) => {
   try {
     const application = await Application.findOne().sort({ createdAt: -1 });
-    res.json(application || null);
+    if (!application) return res.status(404).json(null);
+    res.json(application);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Failed to fetch application" });
   }
 });
 
 /* ---------------------------------------------------
-   SEARCH APPLICATION (FIXED)
+   SEARCH APPLICATION BY EMAIL OR ID
 --------------------------------------------------- */
 const searchSchema = z.object({
-  query: z.string().trim().min(3),
+  query: z
+    .string()
+    .min(3, "Query must be at least 3 characters")
+    .max(100),
 });
 
 router.get("/search", async (req, res) => {
   try {
-    const { query } = searchSchema.parse({
-      query: req.query.query,
-    });
+    const parsed = searchSchema.parse({ query: req.query.query });
+    const { query } = parsed;
 
     let application;
 
     if (query.includes("@")) {
-      application = await Application.findOne({
-        email: query.toLowerCase(),
-      }).lean();
-    } else if (/^\d{13}$/.test(query)) {
-      application = await Application.findOne({
-        idNumber: query,
-      }).lean();
+      application = await Application.findOne({ email: query }).lean();
+    } else if (/^\d{6,13}$/.test(query)) {
+      application = await Application.findOne({ idNumber: query }).lean();
     } else {
-      return res.status(400).json({
-        message: "Search by email or 13-digit ID number",
-      });
+      return res.status(400).json({ error: "Invalid search query" });
     }
 
     if (!application) {
-      return res.status(404).json({ message: "Application not found" });
+      return res.status(404).json({ error: "Application not found" });
     }
 
     res.json(application);
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ message: err.errors[0].message });
+      return res.status(400).json({ error: err.errors[0].message });
     }
-
     console.error(err);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
