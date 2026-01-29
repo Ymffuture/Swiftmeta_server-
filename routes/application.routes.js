@@ -1,7 +1,7 @@
 import express from "express";
 import Application from "../models/Application.js";
 import { z } from "zod";
-import { upload } from "../middleware/upload.js";
+import { upload} from "./uploads.js";
 
 const router = express.Router();
 
