@@ -11,17 +11,17 @@ const ApplicationSchema = new mongoose.Schema(
     // Personal
     firstName: { type: String, required: true },
     lastName: { type: String, required: true },
-    idNumber: { type: String, required: true },
+    idNumber: { type: String, required: true, unique: true },
     gender: { type: String },
-    email: { type: String, required: true },
-    phone: { type: String },
+    email: { type: String, required: true, unique: true },
+    phone: { type: String, unique: true },
     location: { type: String },
 
     // Professional
     qualification: { type: String },
     experience: { type: String },
     currentRole: { type: String },
-    portfolio: { type: String },
+    portfolio: { type: String, unique:true },
 
     // Documents
     documents: {
