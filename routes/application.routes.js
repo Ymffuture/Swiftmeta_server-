@@ -17,16 +17,15 @@ function isValidSouthAfricanID(id) {
   const month = parseInt(id.slice(2, 4), 10);
   const day = parseInt(id.slice(4, 6), 10);
 
-  const fullYear =
-    year <= new Date().getFullYear() % 100 ? 2000 + year : 1900 + year;
-  const date = new Date(fullYear, month - 1, day);
+  const currentYear = new Date().getFullYear() % 100;
+  const fullYear = year <= currentYear ? 2000 + year : 1900 + year;
 
+  const date = new Date(fullYear, month - 1, day);
   if (
     date.getFullYear() !== fullYear ||
     date.getMonth() !== month - 1 ||
     date.getDate() !== day
-  )
-    return false;
+  ) return false;
 
   const citizenship = parseInt(id[10], 10);
   if (![0, 1].includes(citizenship)) return false;
@@ -55,22 +54,23 @@ const extractGenderFromSAID = (id) =>
 const uploadToCloudinary = (file, folder) =>
   new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { folder, resource_type: "raw" }, // 🔥 PDFs/DOCX
+      { folder, resource_type: "raw" },
       (err, result) => {
         if (err) reject(err);
         else resolve(result);
       }
     );
+
     streamifier.createReadStream(file.buffer).pipe(stream);
   });
 
 /* ---------------------------------------------------
-   ZOD BODY SCHEMA
+   ZOD BODY SCHEMA (FIXED CONSENT)
 --------------------------------------------------- */
 const applicationSchema = z.object({
   firstName: z.string().min(2),
   lastName: z.string().min(2),
-  idNumber: z.string().refine(isValidSouthAfricanID),
+  idNumber: z.string().refine(isValidSouthAfricanID, "Invalid SA ID number"),
   email: z.string().email(),
   phone: z.string().optional(),
   location: z.string().min(2),
@@ -78,7 +78,10 @@ const applicationSchema = z.object({
   experience: z.string().min(1),
   currentRole: z.string().optional(),
   portfolio: z.string().optional(),
-  consent: z.literal("true"), // multipart/form-data
+  consent: z.preprocess(
+    (v) => v === "true" || v === true,
+    z.boolean().refine((v) => v === true, "Consent is required")
+  ),
 });
 
 /* ---------------------------------------------------
@@ -98,57 +101,68 @@ router.post(
     try {
       const body = applicationSchema.parse(req.body);
 
-      // Duplicate protection
-      const exists = await Application.findOne({
-        $or: [{ email: body.email }, { idNumber: body.idNumber }],
+      // Soft duplicate check (hard check via DB index)
+      const exists = await Application.exists({
+        $or: [
+          { email: body.email },
+          { idNumber: body.idNumber },
+        ],
       });
-      if (exists)
+
+      if (exists) {
         return res.status(409).json({
           message: "Application already exists for this ID or email",
         });
+      }
 
       const gender = extractGenderFromSAID(body.idNumber);
 
-      // Upload documents
-      const uploadDoc = async (file, folder) =>
-        file
-          ? await uploadToCloudinary(file, folder)
-          : null;
+      const documents = {};
+      const uploadKeys = ["cv", "doc1", "doc2", "doc3", "doc4", "doc5"];
 
-      const docs = {};
-      for (const key of ["cv", "doc1", "doc2", "doc3", "doc4", "doc5"]) {
-        const file = req.files?.[key]?.[0];
-        if (file) {
-          const uploaded = await uploadDoc(file, "applications");
-          docs[key] = {
+      await Promise.all(
+        uploadKeys.map(async (key) => {
+          const file = req.files?.[key]?.[0];
+          if (!file) return;
+
+          const uploaded = await uploadToCloudinary(file, "applications");
+          documents[key] = {
             name: file.originalname,
             url: uploaded.secure_url,
             publicId: uploaded.public_id,
           };
-        }
-      }
+        })
+      );
 
       const application = new Application({
         ...body,
         consent: true,
         gender,
-        documents: docs,
+        documents,
       });
 
       await application.save();
 
-      res.status(201).json({ message: "Application submitted successfully" });
+      res.status(201).json({
+        message: "Application submitted successfully",
+      });
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-      if (err.code === 11000) {
-        return res.status(409).json({
-          message: "Duplicate email, ID or phone number",
+        return res.status(400).json({
+          message: err.errors[0].message,
         });
       }
+
+      if (err.code === 11000) {
+        return res.status(409).json({
+          message: "Duplicate email or ID number",
+        });
+      }
+
       console.error("APPLICATION ERROR:", err);
-      res.status(500).json({ message: "Internal server error" });
+      res.status(500).json({
+        message: "Internal server error",
+      });
     }
   }
 );
@@ -157,26 +171,43 @@ router.post(
    LATEST
 --------------------------------------------------- */
 router.get("/latest", async (_, res) => {
-  const app = await Application.findOne().sort({ createdAt: -1 });
-  res.json(app || null);
+  try {
+    const app = await Application.findOne().sort({ createdAt: -1 });
+    res.json(app || null);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
 /* ---------------------------------------------------
    SEARCH
 --------------------------------------------------- */
 router.get("/search", async (req, res) => {
-  const query = req.query.query;
-  if (!query) return res.status(400).json({ message: "Query required" });
+  try {
+    const query = req.query.query;
+    if (!query) {
+      return res.status(400).json({ message: "Query required" });
+    }
 
-  const app = query.includes("@")
-    ? await Application.findOne({ email: query })
-    : await Application.findOne({ idNumber: query });
+    const app = query.includes("@")
+      ? await Application.findOne({ email: query })
+      : await Application.findOne({ idNumber: query });
 
-  if (!app) return res.status(404).json({ message: "Not found" });
-  res.json(app);
+    if (!app) {
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    res.json(app);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
-// GET /application/exists?email=... OR ?idNumber=...
+/* ---------------------------------------------------
+   EXISTS (FIXED OR LOGIC)
+--------------------------------------------------- */
 router.get("/exists", async (req, res) => {
   try {
     const { email, idNumber } = req.query;
@@ -186,8 +217,10 @@ router.get("/exists", async (req, res) => {
     }
 
     const exists = await Application.exists({
-      ...(email && { email }),
-      ...(idNumber && { idNumber }),
+      $or: [
+        ...(email ? [{ email }] : []),
+        ...(idNumber ? [{ idNumber }] : []),
+      ],
     });
 
     res.json({ exists: Boolean(exists) });
@@ -196,6 +229,5 @@ router.get("/exists", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 export default router;
