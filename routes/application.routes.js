@@ -176,4 +176,26 @@ router.get("/search", async (req, res) => {
   res.json(app);
 });
 
+// GET /application/exists?email=... OR ?idNumber=...
+router.get("/exists", async (req, res) => {
+  try {
+    const { email, idNumber } = req.query;
+
+    if (!email && !idNumber) {
+      return res.status(400).json({ message: "Missing query" });
+    }
+
+    const exists = await Application.exists({
+      ...(email && { email }),
+      ...(idNumber && { idNumber }),
+    });
+
+    res.json({ exists: Boolean(exists) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
 export default router;
