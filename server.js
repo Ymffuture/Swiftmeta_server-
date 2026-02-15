@@ -20,6 +20,7 @@ import conversationsRoute from "./routes/conversations.js";
 import messagesRoutes from "./routes/messages.js";
 import applicationRoutes from "./routes/application.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import verifyId from "./routes/verifyId.js";
 
 
 dotenv.config();
@@ -60,6 +61,8 @@ app.use("/api/messages", messagesRoutes);
 app.use("/api/application", applicationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/verify-id", verifyId) ;
+
 
 mongoose
   .connect(process.env.MONGO_URI)
