@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
-import axios from "axios";
+import { getNews } from "./news.controller.js";
 
  
 import authRoutes from "./routes/auth.js";
@@ -65,6 +65,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api", verifyId) ;
 
+app.get("/api/news", getNews);
 
 mongoose
   .connect(process.env.MONGO_URI)
@@ -75,63 +76,3 @@ mongoose
     );
   })
   .catch((e) => console.error("Mongo error:", e));
-
-
-
-
-
-
-/*
-|--------------------------------------------------------------------------
-| GET NEWS ARTICLES
-|--------------------------------------------------------------------------
-| Query params:
-|  - page
-|--------------------------------------------------------------------------
-*/
-
-app.get("/api/news", async (req, res) => {
-  try {
-    const { page = 1 } = req.query;
-
-    const { data } = await axios.post(
-      "https://eventregistry.org/api/v1/article/getArticles",
-      {
-        query: {
-          $filter: {
-            forceMaxDataTimeWindow: "31",
-          },
-        },
-        resultType: "articles",
-        articlesSortBy: "date",
-        articlesPage: page,
-        articlesCount: 10,
-        apiKey: process.env.NEWS_API_KEY,
-      }
-    );
-
-    const articles = data.articles.results.map((article) => ({
-      id: article.uri,
-      title: article.title,
-      image: article.image,
-      source: article.source.title,
-      date: article.date,
-      url: article.url,
-      summary: article.body?.slice(0, 180) + "...",
-    }));
-
-    res.json({
-      success: true,
-      page: Number(page),
-      totalResults: data.articles.totalResults,
-      articles,
-    });
-  } catch (error) {
-    console.error("EventRegistry Error:", error.response?.data || error.message);
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch news",
-    });
-  }
-});
