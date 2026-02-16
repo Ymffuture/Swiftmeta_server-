@@ -5,7 +5,9 @@ import mongoose from "mongoose";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
+import axios from "axios";
 
+ 
 import authRoutes from "./routes/auth.js";
 import authRoutesB from "./routes/authB.js";
 import postRoutes from "./routes/posts.js";
@@ -77,48 +79,59 @@ mongoose
 
 
 
+
+
+/*
+|--------------------------------------------------------------------------
+| GET NEWS ARTICLES
+|--------------------------------------------------------------------------
+| Query params:
+|  - page
+|--------------------------------------------------------------------------
+*/
+
 app.get("/api/news", async (req, res) => {
-  try {
-    const { keyword = "technology", page = 1 } = req.query;
+  try {
+    const { page = 1 } = req.query;
 
-    const response = await axios.get(
-      "https://eventregistry.org/api/v1/article/getArticles",
-      {
-        params: {
-          apiKey: process.env.NEWS_API_KEY,
-          keyword,
-          articlesPage: page,
-          articlesCount: 10,
-          articlesSortBy: "date",
-          articlesSortByAsc: false,
-          articlesArticleBodyLen: -1,
-          resultType: "articles",
-          dataType: ["news"],
-          includeArticleCategories: true,
-        },
-      }
-    );
+    const { data } = await axios.post(
+      "https://eventregistry.org/api/v1/article/getArticles",
+      {
+        query: {
+          $filter: {
+            forceMaxDataTimeWindow: "31",
+          },
+        },
+        resultType: "articles",
+        articlesSortBy: "date",
+        articlesPage: page,
+        articlesCount: 10,
+        apiKey: process.env.NEWS_API_KEY,
+      }
+    );
 
-    const articles = response.data.articles.results.map((article) => ({
-      id: article.uri,
-      title: article.title,
-      image: article.image,
-      source: article.source.title,
-      date: article.date,
-      url: article.url,
-      summary: article.body?.slice(0, 200) + "...",
-    }));
+    const articles = data.articles.results.map((article) => ({
+      id: article.uri,
+      title: article.title,
+      image: article.image,
+      source: article.source.title,
+      date: article.date,
+      url: article.url,
+      summary: article.body?.slice(0, 180) + "...",
+    }));
 
-    res.json({
-      success: true,
-      page: Number(page),
-      articles,
-    });
-  } catch (error) {
-    console.error("News API Error:", error.message);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch news",
-    });
-  }
+    res.json({
+      success: true,
+      page: Number(page),
+      totalResults: data.articles.totalResults,
+      articles,
+    });
+  } catch (error) {
+    console.error("EventRegistry Error:", error.response?.data || error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch news",
+    });
+  }
 });
