@@ -1,46 +1,47 @@
-// routes/verifyId.js
 import express from "express";
-import fetch from "node-fetch";
+import axios from "axios";
 
 const router = express.Router();
 
-router.post("/verify-id", async (req, res) => {
+router.post("/verify-id", async (req, res, next) => {
   const { idNumber } = req.body;
 
   if (!idNumber) {
-    return res.status(400).json({ message: "ID number required" });
+    return res.status(400).json({
+      success: false,
+      message: "ID number required",
+    });
   }
 
   try {
-    const response = await fetch(
+    const { data } = await axios.get(
       `https://api.checkid.co.za/api/v1/validate/${idNumber}`,
       {
-        method: "GET",
         headers: {
           Authorization: `Bearer ${process.env.CHECKID_API_KEY}`,
-          "Content-Type": "application/json",
         },
+        timeout: 8000, // prevent hanging requests
       }
     );
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error("CheckID error:", data);
-      return res.status(response.status).json({
-        message: data.message || "Verification service failed",
-      });
-    }
-
-    return res.status(200).json(data);
+    return res.status(200).json({
+      success: true,
+      data,
+    });
 
   } catch (error) {
-    console.error("CheckID API error:", error);
-    return res.status(500).json({
-      message: "Verification failed",
+    console.error(
+      "CheckID API Error:",
+      error.response?.data || error.message
+    );
+
+    return res.status(error.response?.status || 500).json({
+      success: false,
+      message:
+        error.response?.data?.message ||
+        "Verification service failed",
     });
   }
 });
-
 
 export default router;
