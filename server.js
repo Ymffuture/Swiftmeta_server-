@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
-import { getNews } from "./controller/news.controller.js";
+import { getNews } from "./controllers/news.controller.js";
 
  
 import authRoutes from "./routes/auth.js";
