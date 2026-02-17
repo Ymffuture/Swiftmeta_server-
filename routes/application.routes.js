@@ -113,12 +113,12 @@ const [emailExists, idExists, phoneExists] = duplicateChecks;
 if (emailExists || idExists || phoneExists) {
   const duplicates = [];
 
-  if (emailExists) duplicates.push("Email");
+  if (emailExists) duplicates.push("Email address");
   if (idExists) duplicates.push("ID Number");
-  if (phoneExists) duplicates.push("Phone");
+  if (phoneExists) duplicates.push("Phone number");
 
   return res.status(409).json({
-    message: `${duplicates.join(", ")} already exists`,
+    message: `${duplicates.join(", ")} already exists in our system. Please track your application`,
   });
 }
 
