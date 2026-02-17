@@ -102,18 +102,25 @@ router.post(
       const body = applicationSchema.parse(req.body);
 
       // Soft duplicate check (hard check via DB index)
-      const exists = await Application.exists({
-        $or: [
-          { email: body.email },
-          { idNumber: body.idNumber },
-        ],
-      });
+      const duplicateChecks = await Promise.all([
+  Application.exists({ email: body.email }),
+  Application.exists({ idNumber: body.idNumber }),
+  Application.exists({ phone: body.phone }),
+]);
 
-      if (exists) {
-        return res.status(409).json({
-          message: "Application already exists for this ID or email",
-        });
-      }
+const [emailExists, idExists, phoneExists] = duplicateChecks;
+
+if (emailExists || idExists || phoneExists) {
+  const duplicates = [];
+
+  if (emailExists) duplicates.push("Email");
+  if (idExists) duplicates.push("ID Number");
+  if (phoneExists) duplicates.push("Phone");
+
+  return res.status(409).json({
+    message: `${duplicates.join(", ")} already exists`,
+  });
+}
 
       const gender = extractGenderFromSAID(body.idNumber);
 
