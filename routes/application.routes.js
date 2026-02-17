@@ -154,11 +154,12 @@ router.post(
       }
 
       if (err.code === 11000) {
-        return res.status(409).json({
-          message: "Duplicate email or ID number",
-        });
-      }
+  const field = Object.keys(err.keyValue)[0];
 
+  return res.status(409).json({
+    message: `${field} already exists in our system.`,
+  });
+}
       console.error("APPLICATION ERROR:", err);
       res.status(500).json({
         message: "Internal server error",
