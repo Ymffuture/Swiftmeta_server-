@@ -2,50 +2,55 @@ import axios from "axios";
 
 export const getNews = async (req, res, next) => {
   try {
-    const { data } = await axios.post(
-      "https://eventregistry.org/api/v1/article/getArticles",
+    const { topic = "general", country = "za", max = 10 } = req.query;
+
+    const { data } = await axios.get(
+      "https://gnews.io/api/v4/top-headlines",
       {
-        query: {
-          $filter: { forceMaxDataTimeWindow: "31" },
+        params: {
+          topic,                 // business, sports, tech, etc.
+          country,               // e.g. za
+          max,                   // number of articles
+          lang: "en",
+          apiKey: process.env.GNEWS_API_KEY,
         },
-        resultType: "articles",
-        articlesSortBy: "date",
-        apiKey: process.env.NEWS_API_KEY,
       }
     );
 
-    const results = data?.articles?.results;
-
-    if (!results) {
-      console.error("Unexpected API response:", data);
-
+    if (!data?.articles) {
       return res.status(502).json({
         success: false,
-        message: "News provider returned invalid data",
+        message: "Invalid response from GNews",
       });
     }
 
-    const articles = results.map((article) => ({
-      id: article.uri,
+    const articles = data.articles.map((article, index) => ({
+      id: index,
       title: article.title,
       image: article.image,
-      source: article.source?.title,
-      date: article.date,
+      source: article.source?.name,
+      date: article.publishedAt,
       url: article.url,
-      summary: article.body?.slice(0, 180) + "...",
+      summary:
+        article.description?.slice(0, 180) +
+        (article.description?.length > 180 ? "..." : ""),
     }));
 
-    res.json({
+    res.status(200).json({
       success: true,
+      totalArticles: data.totalArticles,
       articles,
     });
 
   } catch (error) {
     console.error(
-      "Axios Error:",
+      "GNews Error:",
       error.response?.data || error.message
     );
 
-    next(error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch news",
+    });
   }
 };
