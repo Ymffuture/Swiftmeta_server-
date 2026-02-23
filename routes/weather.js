@@ -7,11 +7,11 @@ router.get("/", async (req, res) => {
   try {
     const { lat, lon } = req.query;
 
-    if (!lat || !lon) {
-      return res.status(400).json({
-        message: "Latitude and Longitude are required",
-      });
-    }
+    if (lat === undefined || lon === undefined) {
+  return res.status(400).json({
+    message: "Latitude and Longitude are required",
+  });
+}
 console.log("Query params:", req.query);
     const response = await axios.get(
       "https://api.openweathermap.org/data/2.5/weather",
