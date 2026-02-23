@@ -1,0 +1,47 @@
+import express from "express";
+import axios from "axios";
+
+const router = express.Router();
+
+router.get("/", async (req, res) => {
+  try {
+    const { lat, lon } = req.query;
+
+    if (!lat || !lon) {
+      return res.status(400).json({
+        message: "Latitude and Longitude are required",
+      });
+    }
+
+    const response = await axios.get(
+      "https://api.openweathermap.org/data/2.5/weather",
+      {
+        params: {
+          lat,
+          lon,
+          appid: process.env.OPENWEATHER_API_KEY,
+          units: "metric",
+        },
+      }
+    );
+
+    const data = response.data;
+
+    const cleanWeather = {
+      temp: Math.round(data.main.temp),
+      feelsLike: Math.round(data.main.feels_like),
+      city: data.name,
+      country: data.sys.country,
+      desc: data.weather[0].description,
+      icon: data.weather[0].icon,
+    };
+
+    res.json(cleanWeather);
+
+  } catch (error) {
+    console.error("Weather API Error:", error.message);
+    res.status(500).json({ message: "Failed to fetch weather" });
+  }
+});
+
+export default router;
