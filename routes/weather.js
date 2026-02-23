@@ -39,9 +39,14 @@ router.get("/", async (req, res) => {
     res.json(cleanWeather);
 
   } catch (error) {
-    console.error("Weather API Error:", error.message);
-    res.status(500).json({ message: "Failed to fetch weather" });
+  if (error.response) {
+    return res.status(error.response.status).json({
+      message: error.response.data.message || "Weather API error",
+    });
   }
+
+  res.status(500).json({ message: "Server error" });
+}
 });
 
 export default router;
