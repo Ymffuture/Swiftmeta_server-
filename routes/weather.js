@@ -12,7 +12,7 @@ router.get("/", async (req, res) => {
         message: "Latitude and Longitude are required",
       });
     }
-
+console.log("Query params:", req.query);
     const response = await axios.get(
       "https://api.openweathermap.org/data/2.5/weather",
       {
