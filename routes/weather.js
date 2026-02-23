@@ -9,7 +9,7 @@ router.get("/", async (req, res) => {
 
     if (lat === undefined || lon === undefined) {
   return res.status(400).json({
-    message: "Latitude and Longitude are required",
+    message: "Latitude and Longitude are required. Empty input from your Frontend ",
   });
 }
 console.log("Query params:", req.query);
