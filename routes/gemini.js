@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai"; // Kimi uses OpenAI-compatible API
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import { systemPrompt } from "./AiPrompt.js";
@@ -35,21 +35,22 @@ router.post("/", authenticateJWT, async (req, res) => {
       content: prompt,
     });
 
-    const genai = new GoogleGenAI(process.env.GEMINI_API_KEY);
-
-    const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: `${systemPrompt}\nUser: ${prompt}` }],
-        },
-      ],
+    // Initialize Kimi AI client (OpenAI-compatible)
+    const kimi = new OpenAI({
+      apiKey: process.env.KIMI_API_KEY,
+      baseURL: "https://api.moonshot.cn/v1",
     });
 
-    const reply =
-      response.text ||
-      response.candidates?.[0]?.content?.parts?.[0]?.text;
+    const response = await kimi.chat.completions.create({
+      model: "kimi-k2-5", // or "kimi-k2", "kimi-k1-5", "kimi-k1"
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0.7,
+    });
+
+    const reply = response.choices[0]?.message?.content;
 
     if (!reply) throw new Error("Empty AI response");
 
