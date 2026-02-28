@@ -1,5 +1,5 @@
 import { Router } from "express";
-import OpenAI from "openai"; // Kimi uses OpenAI-compatible API
+import OpenAI from "openai";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import { systemPrompt } from "./AiPrompt.js";
@@ -7,11 +7,17 @@ import { authenticateJWT } from "../middleware/authentication.js";
 
 const router = Router();
 
+const kimi = new OpenAI({
+  apiKey: process.env.KIMI_API_KEY,
+  baseURL: "https://api.moonshot.cn/v1",
+});
+
 router.post("/", authenticateJWT, async (req, res) => {
   const startTime = Date.now();
 
   try {
     const { prompt, conversationId } = req.body;
+
     if (!prompt?.trim())
       return res.status(400).json({ error: "Prompt required" });
 
@@ -35,14 +41,9 @@ router.post("/", authenticateJWT, async (req, res) => {
       content: prompt,
     });
 
-    // Initialize Kimi AI client (OpenAI-compatible)
-    const kimi = new OpenAI({
-      apiKey: process.env.KIMI_API_KEY,
-      baseURL: "https://api.moonshot.cn/v1",
-    });
-
+    // ✅ Correct request
     const response = await kimi.chat.completions.create({
-      model: "kimi-k2-5", // or "kimi-k2", "kimi-k1-5", "kimi-k1"
+      model: "kimi-k1-5-32k",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
@@ -50,7 +51,7 @@ router.post("/", authenticateJWT, async (req, res) => {
       temperature: 0.7,
     });
 
-    const reply = response.choices[0]?.message?.content;
+    const reply = response.choices?.[0]?.message?.content;
 
     if (!reply) throw new Error("Empty AI response");
 
@@ -61,9 +62,17 @@ router.post("/", authenticateJWT, async (req, res) => {
       latencyMs: Date.now() - startTime,
     });
 
-    res.json({ reply, conversationId: conversation._id });
+    res.json({
+      reply,
+      conversationId: conversation._id,
+    });
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Kimi Error:", err.response?.data || err.message);
+
+    res.status(500).json({
+      error: err.message,
+    });
   }
 });
 
