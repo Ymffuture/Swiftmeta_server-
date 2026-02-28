@@ -12,7 +12,7 @@ const router = Router();
 // OpenRouter client (OpenAI-compatible)
 // ────────────────────────────────────────────────
 const openrouter = new OpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY,
+  apiKey: process.env.KIMI_API_KEY,
   baseURL: "https://openrouter.ai/api/v1",
   defaultHeaders: {
     "HTTP-Referer": "https://swiftmeta.vercel.app", // ← change to your real domain
