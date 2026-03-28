@@ -6,30 +6,24 @@ import crypto from "crypto";
 import "dotenv/config";
 
 /* ======================================================
-   REQUEST EMAIL VERIFICATION (SEND DATA TO FRONTEND)
+   REQUEST EMAIL VERIFICATION
 ====================================================== */
 export const requestVerification = async (req, res) => {
   try {
     const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email required" });
 
-    if (!email) {
-      return res.status(400).json({ message: "Email required" });
-    }
-
-    // Remove previous tokens
     await EmailToken.deleteMany({ email });
 
     const token = crypto.randomBytes(32).toString("hex");
-
     await EmailToken.create({
       email,
       token,
-      expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 min
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     });
 
     const verifyUrl = `${process.env.FRONTEND_URL}/verify?token=${token}`;
 
-    // ✅ SEND PAYLOAD FOR EMAILJS
     res.json({
       emailPayload: {
         to_email: email,
@@ -50,13 +44,9 @@ export const requestVerification = async (req, res) => {
 export const verifyEmail = async (req, res) => {
   try {
     const { token } = req.query;
-
-    if (!token) {
-      return res.status(400).json({ message: "Token required" });
-    }
+    if (!token) return res.status(400).json({ message: "Token required" });
 
     const record = await EmailToken.findOne({ token });
-
     if (!record || new Date(record.expiresAt) < new Date()) {
       return res.status(400).json({ message: "Invalid or expired token" });
     }
@@ -66,7 +56,6 @@ export const verifyEmail = async (req, res) => {
       { $setOnInsert: { email: record.email } },
       { upsert: true }
     );
-
     await EmailToken.deleteOne({ _id: record._id });
 
     res.json({ verified: true });
@@ -77,7 +66,9 @@ export const verifyEmail = async (req, res) => {
 };
 
 /* ======================================================
-   SUBMIT QUIZ (RETURN RESULT + EMAILJS PAYLOAD)
+   SUBMIT QUIZ
+   FIX: Coerce MCQ userAnswer to Number before strict
+        comparison — frontend may send index as string.
 ====================================================== */
 export const submitQuiz = async (req, res) => {
   try {
@@ -107,19 +98,22 @@ export const submitQuiz = async (req, res) => {
 
     quizzes.forEach((q) => {
       const userAnswer = answers[q.id];
-      if (!userAnswer) return;
+      if (userAnswer === undefined || userAnswer === null || userAnswer === "") return;
 
-      if (q.type === "mcq" && userAnswer === q.correctAnswer) score++;
-      if (
-        q.type === "output" &&
-        String(userAnswer).trim() === String(q.correctAnswer).trim()
-      )
-        score++;
+      if (q.type === "mcq") {
+        // ✅ FIX: coerce both sides to Number so "1" === 1 passes
+        if (Number(userAnswer) === Number(q.correctAnswer)) score++;
+      }
+
+      if (q.type === "output") {
+        // ✅ Trim + case-insensitive for output answers
+        const normalise = (v) => String(v).trim().toLowerCase();
+        if (normalise(userAnswer) === normalise(q.correctAnswer)) score++;
+      }
     });
 
     const percentage = Math.round((score / quizzes.length) * 100);
     const passed = percentage >= 50;
-
     const nextAllowedAttempt = passed
       ? null
       : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
@@ -134,11 +128,11 @@ export const submitQuiz = async (req, res) => {
       nextAllowedAttempt,
     });
 
-    // ✅ EMAILJS RESULT PAYLOAD
     res.json({
       score,
       percentage,
       passed,
+      total: quizzes.length,
       attemptId: attempt._id,
       emailPayload: {
         to_email: email,
@@ -149,7 +143,7 @@ Email: ${email}
 Score: ${score}/${quizzes.length}
 Percentage: ${percentage}%
 Status: ${passed ? "PASSED" : "FAILED"}
-        `,
+        `.trim(),
       },
     });
   } catch (err) {
