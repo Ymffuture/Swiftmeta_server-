@@ -1,10 +1,13 @@
+// controllers/post.js
+// ✅ FIX: `PROCESS.ENV.*` (uppercase) is not defined in Node.js — only
+// `process.env.*` (lowercase) is. The uppercase references caused Cloudinary
+// to initialise with undefined credentials, silently failing every image upload.
+
 import express from "express";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import nodemailer from "nodemailer";
 import User from "../models/User.js";
 import Post from "../models/Post.js";
-import cors from "cors";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
@@ -20,22 +23,25 @@ const router = express.Router();
 
 if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
 
+// ✅ Lowercase process.env
 cloudinary.config({
-  cloud_name: PROCESS.ENV.CLOUDINARY_API_NAME,
-  api_key: PROCESS.ENV.CLOUDINARY_API_KEY,
-  api_secret: PROCESS.ENV.CLOUDINARY_API_SECRET,
+  cloud_name: process.env.CLOUDINARY_API_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
 const storage = multer.diskStorage({
   destination: dest,
   filename: (_, file, cb) => {
-    cb(null, `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${path.extname(file.originalname)}`);
+    cb(
+      null,
+      `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${path.extname(file.originalname)}`
+    );
   },
 });
 
 const upload = multer({ storage });
 
-// ✅ AUTH MIDDLEWARE
 export function auth(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ message: "No token" });
@@ -49,7 +55,6 @@ export function auth(req, res, next) {
   }
 }
 
-// ✅ CREATE POST WITH CLOUDINARY
 export const createPost = [
   auth,
   upload.single("image"),
@@ -61,10 +66,16 @@ export const createPost = [
       if (req.file) {
         const result = await cloudinary.uploader.upload(req.file.path);
         imageUrl = result.secure_url;
-        fs.unlinkSync(req.file.path); // cleanup local file
+        fs.unlinkSync(req.file.path);
       }
 
-      const post = new Post({ user: req.userId, content, image: imageUrl, likes: [], comments: [] });
+      const post = new Post({
+        user: req.userId,
+        content,
+        image: imageUrl,
+        likes: [],
+        comments: [],
+      });
       await post.save();
 
       const saved = await Post.findById(post._id)
@@ -90,7 +101,6 @@ export const createPost = [
   },
 ];
 
-// ✅ GET POSTS (Now returns avatars + names)
 export const getPosts = async (req, res) => {
   try {
     const posts = await Post.find()
@@ -115,11 +125,5 @@ export const getPosts = async (req, res) => {
     res.status(500).json({ message: "Load posts error" });
   }
 };
-
-// Other routes must also include `auth`
-router.put("/posts/:id", auth, editPost);
-router.delete("/posts/:id", auth, deletePost);
-router.post("/posts/:id/like", auth, likePost);
-router.post("/posts/:id/comment", auth, commentPost);
 
 export default router;
