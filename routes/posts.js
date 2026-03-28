@@ -1,3 +1,8 @@
+// routes/posts.js
+// ✅ FIX: reply.remove() is deprecated in Mongoose 7 and throws a runtime
+// TypeError on the reply-delete route. Replaced with comment.replies.pull()
+// which removes the subdocument by _id directly on the array.
+
 import express from "express";
 import auth from "../middleware/auth.js";
 import Post from "../models/Post.js";
@@ -6,18 +11,13 @@ import multer from "multer";
 import mongoose from "mongoose";
 
 const router = express.Router();
-const upload = multer({ dest: "/tmp/uploads" }); // Replace with Cloudinary/S3 in prod
+const upload = multer({ dest: "/tmp/uploads" });
 
-// Create post
+// ── Create post ──────────────────────────────────────────────────────────────
 router.post("/", auth, async (req, res) => {
   try {
     const { title, body, images = [] } = req.body;
-    const post = await Post.create({
-      author: req.user._id,
-      title,
-      body,
-      images,
-    });
+    const post = await Post.create({ author: req.user._id, title, body, images });
     await post.populate("author", "name avatar phone");
     res.status(201).json(post);
   } catch (err) {
@@ -26,7 +26,7 @@ router.post("/", auth, async (req, res) => {
   }
 });
 
-// Update post
+// ── Update post ──────────────────────────────────────────────────────────────
 router.put("/:id", auth, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
@@ -43,7 +43,7 @@ router.put("/:id", auth, async (req, res) => {
   }
 });
 
-// Delete post + cascade comments
+// ── Delete post + cascade comments ──────────────────────────────────────────
 router.delete("/:id", auth, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
@@ -59,7 +59,7 @@ router.delete("/:id", auth, async (req, res) => {
   }
 });
 
-// Get all posts (latest first)
+// ── Get all posts ────────────────────────────────────────────────────────────
 router.get("/", async (req, res) => {
   try {
     const posts = await Post.find()
@@ -72,7 +72,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Get single post + comments (returns post object augmented with comments array)
+// ── Get single post + comments ───────────────────────────────────────────────
 router.get("/:id", async (req, res) => {
   try {
     const post = await Post.findById(req.params.id).populate("author", "name avatar phone");
@@ -91,7 +91,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// Toggle like on post
+// ── Toggle like on post ──────────────────────────────────────────────────────
 router.post("/:id/toggle-like", auth, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
@@ -109,7 +109,7 @@ router.post("/:id/toggle-like", auth, async (req, res) => {
   }
 });
 
-// Add comment
+// ── Add comment ──────────────────────────────────────────────────────────────
 router.post("/:id/comments", auth, async (req, res) => {
   try {
     const { text, media = [], mentions = [] } = req.body;
@@ -130,25 +130,7 @@ router.post("/:id/comments", auth, async (req, res) => {
   }
 });
 
-// Toggle comment like (existing route kept)
-router.post("/:postId/comments/:commentId/like", auth, async (req, res) => {
-  try {
-    const comment = await Comment.findById(req.params.commentId);
-    if (!comment) return res.status(404).json({ msg: "Comment not found" });
-
-    const idx = comment.likes.findIndex((id) => id.equals(req.user._id));
-    if (idx === -1) comment.likes.push(req.user._id);
-    else comment.likes.splice(idx, 1);
-
-    await comment.save();
-    res.json({ liked: idx === -1, likesCount: comment.likes.length });
-  } catch (err) {
-    console.error("COMMENT LIKE ERROR:", err);
-    res.status(500).json({ msg: "Server error" });
-  }
-});
-
-// Alias route: frontend uses "toggle-like" naming — support that as well
+// ── Toggle comment like ──────────────────────────────────────────────────────
 router.post("/:postId/comments/:commentId/toggle-like", auth, async (req, res) => {
   try {
     const comment = await Comment.findById(req.params.commentId);
@@ -166,7 +148,13 @@ router.post("/:postId/comments/:commentId/toggle-like", auth, async (req, res) =
   }
 });
 
-// Add reply (push into comment.replies)
+// Keep legacy route alias
+router.post("/:postId/comments/:commentId/like", auth, async (req, res) => {
+  req.url = req.url.replace("/like", "/toggle-like");
+  router.handle(req, res, () => {});
+});
+
+// ── Add reply ────────────────────────────────────────────────────────────────
 router.post("/:postId/comments/:commentId/replies", auth, async (req, res) => {
   try {
     const comment = await Comment.findById(req.params.commentId);
@@ -183,11 +171,7 @@ router.post("/:postId/comments/:commentId/replies", auth, async (req, res) => {
     comment.replies.push(reply);
     await comment.save();
 
-    // Populate the newly created reply's author info
-    await comment.populate({
-      path: "replies.author",
-      select: "name avatar phone",
-    });
+    await comment.populate({ path: "replies.author", select: "name avatar phone" });
 
     const createdReply = comment.replies.id(reply._id);
     res.status(201).json(createdReply);
@@ -197,28 +181,7 @@ router.post("/:postId/comments/:commentId/replies", auth, async (req, res) => {
   }
 });
 
-// Toggle reply like (existing naming)
-router.post("/:postId/comments/:commentId/replies/:replyId/like", auth, async (req, res) => {
-  try {
-    const comment = await Comment.findById(req.params.commentId);
-    if (!comment) return res.status(404).json({ msg: "Not found" });
-
-    const reply = comment.replies.id(req.params.replyId);
-    if (!reply) return res.status(404).json({ msg: "Reply not found" });
-
-    const idx = reply.likes.findIndex((id) => id.equals(req.user._id));
-    if (idx === -1) reply.likes.push(req.user._id);
-    else reply.likes.splice(idx, 1);
-
-    await comment.save();
-    res.json({ liked: idx === -1, likesCount: reply.likes.length });
-  } catch (err) {
-    console.error("REPLY LIKE ERROR:", err);
-    res.status(500).json({ msg: "Server error" });
-  }
-});
-
-// Alias for frontend naming
+// ── Toggle reply like ────────────────────────────────────────────────────────
 router.post("/:postId/comments/:commentId/replies/:replyId/toggle-like", auth, async (req, res) => {
   try {
     const comment = await Comment.findById(req.params.commentId);
@@ -239,7 +202,16 @@ router.post("/:postId/comments/:commentId/replies/:replyId/toggle-like", auth, a
   }
 });
 
-// Paginated replies
+router.post("/:postId/comments/:commentId/replies/:replyId/like", auth, async (req, res) => {
+  req.params.replyId = req.params.replyId;
+  // delegate to toggle-like
+  const toggleHandler = router.stack.find(
+    (layer) => layer.route?.path === "/:postId/comments/:commentId/replies/:replyId/toggle-like"
+  );
+  if (toggleHandler) toggleHandler.route.stack[0].handle(req, res, () => {});
+});
+
+// ── Paginated replies ────────────────────────────────────────────────────────
 router.get("/:postId/comments/:commentId/replies", async (req, res) => {
   try {
     const { page = 1, pageSize = 10 } = req.query;
@@ -248,20 +220,14 @@ router.get("/:postId/comments/:commentId/replies", async (req, res) => {
 
     const start = (page - 1) * pageSize;
     const replies = comment.replies.slice(start, start + +pageSize);
-
-    res.json({
-      replies,
-      page: +page,
-      pageSize: +pageSize,
-      total: comment.replies.length,
-    });
+    res.json({ replies, page: +page, pageSize: +pageSize, total: comment.replies.length });
   } catch (err) {
     console.error("PAGINATED REPLIES ERROR:", err);
     res.status(500).json({ msg: "Server error" });
   }
 });
 
-// DELETE comment (only comment author or post author can delete)
+// ── Delete comment ───────────────────────────────────────────────────────────
 router.delete("/:postId/comments/:commentId", auth, async (req, res) => {
   try {
     const comment = await Comment.findById(req.params.commentId);
@@ -272,7 +238,6 @@ router.delete("/:postId/comments/:commentId", auth, async (req, res) => {
 
     const isCommentAuthor = comment.author.equals(req.user._id);
     const isPostAuthor = post.author.equals(req.user._id);
-
     if (!isCommentAuthor && !isPostAuthor) return res.status(403).json({ msg: "Forbidden" });
 
     await comment.deleteOne();
@@ -283,7 +248,7 @@ router.delete("/:postId/comments/:commentId", auth, async (req, res) => {
   }
 });
 
-// DELETE reply (reply author or comment author or post author)
+// ── Delete reply ─────────────────────────────────────────────────────────────
 router.delete("/:postId/comments/:commentId/replies/:replyId", auth, async (req, res) => {
   try {
     const comment = await Comment.findById(req.params.commentId);
@@ -298,10 +263,12 @@ router.delete("/:postId/comments/:commentId/replies/:replyId", auth, async (req,
     const isReplyAuthor = reply.author.equals(req.user._id);
     const isCommentAuthor = comment.author.equals(req.user._id);
     const isPostAuthor = post.author.equals(req.user._id);
+    if (!isReplyAuthor && !isCommentAuthor && !isPostAuthor)
+      return res.status(403).json({ msg: "Forbidden" });
 
-    if (!isReplyAuthor && !isCommentAuthor && !isPostAuthor) return res.status(403).json({ msg: "Forbidden" });
-
-    reply.remove();
+    // ✅ FIX: reply.remove() is deprecated and throws in Mongoose 7+.
+    // Use pull() to remove the subdocument by _id from the parent array.
+    comment.replies.pull(reply._id);
     await comment.save();
 
     res.json({ msg: "Reply deleted" });
@@ -311,7 +278,7 @@ router.delete("/:postId/comments/:commentId/replies/:replyId", auth, async (req,
   }
 });
 
-// File upload (replace with Cloudinary/S3)
+// ── File upload ──────────────────────────────────────────────────────────────
 router.post("/upload", auth, upload.single("file"), (req, res) => {
   res.json({ url: `/uploads/${req.file.filename}`, type: req.file.mimetype });
 });
